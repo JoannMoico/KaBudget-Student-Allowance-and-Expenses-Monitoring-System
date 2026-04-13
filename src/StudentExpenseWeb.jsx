@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, LineChart, Line, LabelList
@@ -150,17 +151,19 @@ function Toast({ msg, type, onDone }) {
 
 function ConfirmModal({ show, title, message, onYes, onNo, yesLabel="Yes", noLabel="No", yesColor="#e74c3c" }) {
   if (!show) return null;
-  return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:9999, padding:20 }}>
+  // Portal → body so fixed overlay isn’t clipped by mobile .auth-page-root { overflow-y: auto }
+  return createPortal(
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:2147483646, padding:20, boxSizing:"border-box" }}>
       <div style={{ background:"#fff", borderRadius:20, padding:28, maxWidth:320, width:"100%", boxShadow:"0 8px 40px rgba(0,0,0,0.2)", animation:"fadeUp 0.25s ease" }}>
         <p style={{ fontWeight:800, fontSize:"1rem", color:"#0f172a", marginBottom:8 }}>{title}</p>
         <p style={{ fontSize:"0.88rem", color:"#64748b", marginBottom:22, lineHeight:1.5 }}>{message}</p>
         <div style={{ display:"flex", gap:10 }}>
-          <button onClick={onNo} style={{ flex:1, padding:"11px", border:"2px solid #e2e8f0", borderRadius:12, background:"#f8fafc", fontFamily:"'Sora',sans-serif", fontWeight:700, fontSize:"0.9rem", cursor:"pointer", color:"#334155" }}>{noLabel}</button>
-          <button onClick={onYes} style={{ flex:1, padding:"11px", border:"none", borderRadius:12, background:yesColor, color:"#fff", fontFamily:"'Sora',sans-serif", fontWeight:700, fontSize:"0.9rem", cursor:"pointer" }}>{yesLabel}</button>
+          <button type="button" onClick={onNo} style={{ flex:1, padding:"11px", border:"2px solid #e2e8f0", borderRadius:12, background:"#f8fafc", fontFamily:"'Sora',sans-serif", fontWeight:700, fontSize:"0.9rem", cursor:"pointer", color:"#334155" }}>{noLabel}</button>
+          <button type="button" onClick={onYes} style={{ flex:1, padding:"11px", border:"none", borderRadius:12, background:yesColor, color:"#fff", fontFamily:"'Sora',sans-serif", fontWeight:700, fontSize:"0.9rem", cursor:"pointer" }}>{yesLabel}</button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
