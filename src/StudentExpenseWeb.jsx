@@ -91,6 +91,13 @@ const GLOBAL_STYLES = `
   .tab-link { background:none; border:none; color:rgba(255,255,255,0.5); font-family:'Sora',sans-serif; font-weight:600; cursor:pointer; font-size:0.9rem; padding:6px 12px; border-radius:8px; transition:all 0.2s; }
   .tab-link.active { color:#4A90D9; background:rgba(74,144,217,0.12); }
   .period-btn { flex:1; padding:8px 0; border:none; border-radius:10px; font-family:'Sora',sans-serif; font-weight:700; font-size:0.82rem; cursor:pointer; transition:all 0.2s; }
+  .allowance-type-head-row { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+  .allowance-type-head-row .card-title { margin-bottom:0 !important; }
+  .allowance-staytype-toggle { display:flex; background:#f1f5f9; border-radius:10px; padding:3px; gap:3px; flex-shrink:0; }
+  @media (max-width:768px) {
+    .allowance-type-head-row { flex-direction:column; align-items:stretch; }
+    .allowance-type-head-row .allowance-staytype-toggle { align-self:center; }
+  }
 `;
 
 function formatDate(d) {
@@ -152,6 +159,11 @@ function AuthPage({ onLogin }) {
   const [mounted, setMounted] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const regNameRef = useRef(null);
+  const regAgeRef = useRef(null);
+  const regDeptRef = useRef(null);
+  const authEmailRef = useRef(null);
+  const authPasswordRef = useRef(null);
 
   // Forgot Password states
   const [fpStep, setFpStep] = useState(0);
@@ -291,9 +303,18 @@ function AuthPage({ onLogin }) {
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             {mode === "register" && (<>
-              <input className="auth-input" placeholder="Full Name" value={form.name} onChange={function(e) { setForm({ ...form, name: e.target.value }); }} />
-              <input className="auth-input" placeholder="Age" type="number" value={form.age} onChange={function(e) { setForm({ ...form, age: e.target.value }); }} />
-              <select className="auth-input" value={form.department} onChange={function(e) { setForm({ ...form, department: e.target.value }); }} style={{ cursor: "pointer" }}>
+              <input ref={regNameRef} className="auth-input" placeholder="Full Name" value={form.name} onChange={function(e) { setForm({ ...form, name: e.target.value }); }}
+                onKeyDown={function(e) { if (e.key === "Enter") { e.preventDefault(); regAgeRef.current && regAgeRef.current.focus(); }}}
+              />
+              <input ref={regAgeRef} className="auth-input" placeholder="Age" type="number" value={form.age} onChange={function(e) { setForm({ ...form, age: e.target.value }); }}
+                onKeyDown={function(e) { if (e.key === "Enter") { e.preventDefault(); regDeptRef.current && regDeptRef.current.focus(); }}}
+              />
+              <select ref={regDeptRef} className="auth-input" value={form.department} onChange={function(e) {
+                var v = e.target.value;
+                setForm({ ...form, department: v });
+                if (v) setTimeout(function() { authEmailRef.current && authEmailRef.current.focus(); }, 0);
+              }} onKeyDown={function(e) { if (e.key === "Enter") { e.preventDefault(); authEmailRef.current && authEmailRef.current.focus(); }}}
+                style={{ cursor: "pointer" }}>
                 <option value="" disabled>Select Department</option>
                 <option value="CCS">CCS – College of Computer Studies</option>
                 <option value="CE">CE – College of Education</option>
@@ -303,13 +324,15 @@ function AuthPage({ onLogin }) {
                 <option value="HSD">High School Department</option>
               </select>
             </>)}
-            <input className="auth-input" placeholder="Email Address" type="email" value={form.email} onChange={function(e) { setForm({ ...form, email: e.target.value }); }} />
+            <input ref={authEmailRef} className="auth-input" placeholder="Email Address" type="email" value={form.email} onChange={function(e) { setForm({ ...form, email: e.target.value }); }}
+              onKeyDown={function(e) { if (e.key === "Enter") { e.preventDefault(); authPasswordRef.current && authPasswordRef.current.focus(); }}}
+            />
             <div style={{ position: "relative" }}>
-              <input className="auth-input" placeholder="Password"
+              <input ref={authPasswordRef} className="auth-input" placeholder="Password"
                 type={showPassword ? "text" : "password"}
                 value={form.password}
                 onChange={function(e) { setForm({ ...form, password: e.target.value }); }}
-                onKeyDown={function(e) { if (e.key === "Enter") handleSubmit(); }}
+                onKeyDown={function(e) { if (e.key === "Enter") { e.preventDefault(); handleSubmit(); }}}
                 style={{ paddingRight: 48 }} />
               <button type="button" onClick={function() { setShowPassword(function(p) { return !p; }); }}
                 style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center" }}>
@@ -899,10 +922,9 @@ function AllowanceTab({ allowance, setAllowance, allowanceType, setAllowanceType
 
       {/* Allowance Type Selector */}
       <div className="card" style={{ marginBottom: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+        <div className="allowance-type-head-row">
           <p className="card-title" style={{ margin: 0 }}>📅 Allowance Type</p>
-          {/* Student Type Toggle Bar */}
-          <div style={{ display: "flex", background: "#f1f5f9", borderRadius: 10, padding: 3, gap: 3 }}>
+          <div className="allowance-staytype-toggle">
             {[{ key: "uwian", label: "🏠 Uwian" }, { key: "boarding", label: "🏢 Boarding" }].map(function(t) {
               const isActive = stayType === t.key;
               return (
