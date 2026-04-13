@@ -172,6 +172,7 @@ function AuthPage({ onLogin }) {
   const [mounted, setMounted] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showConfirmLogin, setShowConfirmLogin] = useState(false);
   const regNameRef = useRef(null);
   const regAgeRef = useRef(null);
   const regDeptRef = useRef(null);
@@ -245,7 +246,21 @@ function AuthPage({ onLogin }) {
 
   function handleSubmit() {
     if (mode === "login") {
-      handleLogin();
+      var le = (form.email || "").trim();
+      var lp = form.password || "";
+      if (!le && !lp) {
+        setToast({ msg: "Please enter your email and password.", type: "error" });
+        return;
+      }
+      if (!le) {
+        setToast({ msg: "Please enter your email address.", type: "error" });
+        return;
+      }
+      if (!lp) {
+        setToast({ msg: "Please enter your password.", type: "error" });
+        return;
+      }
+      setShowConfirmLogin(true);
     } else {
       var missing = [];
       if (!(form.name || "").trim()) missing.push("full name");
@@ -320,8 +335,8 @@ function AuthPage({ onLogin }) {
         </div>
         <div style={{ background: "rgba(255,255,255,0.04)", backdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 24, padding: 36 }}>
           <div style={{ display: "flex", gap: 8, marginBottom: 28, background: "rgba(0,0,0,0.2)", borderRadius: 12, padding: 4 }}>
-            <button className={"tab-link" + (mode === "login" ? " active" : "")} style={{ flex: 1 }} onClick={function() { setMode("login"); }}>Log In</button>
-            <button className={"tab-link" + (mode === "register" ? " active" : "")} style={{ flex: 1 }} onClick={function() { setMode("register"); }}>Register</button>
+            <button className={"tab-link" + (mode === "login" ? " active" : "")} style={{ flex: 1 }} onClick={function() { setMode("login"); setShowConfirmLogin(false); setShowConfirm(false); }}>Log In</button>
+            <button className={"tab-link" + (mode === "register" ? " active" : "")} style={{ flex: 1 }} onClick={function() { setMode("register"); setShowConfirmLogin(false); setShowConfirm(false); }}>Register</button>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             {mode === "register" && (<>
@@ -434,27 +449,13 @@ function AuthPage({ onLogin }) {
         </div>
       )}
 
-      {/* Confirm Register Dialog */}
-      {showConfirm && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999, padding: 20 }}>
-          <div style={{ background: "#1e293b", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 20, padding: 32, maxWidth: 340, width: "100%", textAlign: "center", animation: "fadeUp 0.3s ease" }}>
-            <div style={{ marginBottom: 12, display: "flex", justifyContent: "center", alignItems: "center" }}><img src={KB_LOGO} alt="KaBudget" style={{ width: 60, height: 60, borderRadius: "50%", objectFit: "cover", border: "2px solid rgba(255,255,255,0.3)" }} /></div>
-            <h3 style={{ color: "#fff", fontWeight: 800, fontSize: "1.05rem", marginBottom: 8 }}>Register Account?</h3>
-            <p style={{ color: "rgba(255,255,255,0.55)", fontSize: "0.85rem", marginBottom: 6 }}>Do you want to register this account?</p>
-            <p style={{ color: "#4A90D9", fontSize: "0.85rem", fontWeight: 700, marginBottom: 24, wordBreak: "break-all" }}>{form.email}</p>
-            <div style={{ display: "flex", gap: 12 }}>
-              <button onClick={handleConfirmNo}
-                style={{ flex: 1, padding: "13px", border: "2px solid rgba(255,255,255,0.15)", borderRadius: 12, background: "transparent", color: "rgba(255,255,255,0.75)", fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: "0.95rem", cursor: "pointer" }}>
-                No
-              </button>
-              <button onClick={handleConfirmYes}
-                style={{ flex: 1, padding: "13px", border: "none", borderRadius: 12, background: "linear-gradient(135deg,#4A90D9,#2563eb)", color: "#fff", fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: "0.95rem", cursor: "pointer" }}>
-                Yes
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmModal show={showConfirmLogin} title="Log In?" message={"Are you sure you want to sign in to KaBudget as " + (form.email || "").trim() + "?"}
+        yesLabel="Yes, Log In" noLabel="Cancel" yesColor="#4A90D9"
+        onYes={function() { setShowConfirmLogin(false); handleLogin(); }}
+        onNo={function() { setShowConfirmLogin(false); }} />
+      <ConfirmModal show={showConfirm} title="Create Account?" message={"Are you sure you want to register a KaBudget account for " + (form.name || "").trim() + " (" + (form.email || "").trim() + ")?"}
+        yesLabel="Yes, Create Account" noLabel="Cancel" yesColor="#4A90D9"
+        onYes={handleConfirmYes} onNo={handleConfirmNo} />
 
       {toast && <Toast msg={toast.msg} type={toast.type} onDone={function() { setToast(null); }} />}
     </div>
