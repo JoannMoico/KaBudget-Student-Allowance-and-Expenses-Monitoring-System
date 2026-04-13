@@ -2,7 +2,11 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
+<<<<<<< HEAD
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, LineChart, Line
+=======
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, LineChart, Line, LabelList
+>>>>>>> b970082614b8ebf2496b2719b6dcfce4512ada38
 } from "recharts";
 import { auth, db, storage } from "./firebase";
 import {
@@ -502,6 +506,7 @@ function HomeTab({ expenses, allowance, allowanceType, user, allUsersExpenses })
 
   const [deptPeriod, setDeptPeriod] = useState("firstsem");
   const [deptStayType, setDeptStayType] = useState("uwian");
+<<<<<<< HEAD
   const [deptChartNarrow, setDeptChartNarrow] = useState(typeof window !== "undefined" ? window.innerWidth < 520 : false);
   const nowYear = new Date().getFullYear();
 
@@ -514,6 +519,12 @@ function HomeTab({ expenses, allowance, allowanceType, user, allUsersExpenses })
     return function() { window.removeEventListener("resize", onResize); };
   }, []);
 
+=======
+  const firstSemMonths  = [7,8,9,10,11];
+  const secondSemMonths = [0,1,2,3,4];
+  const nowYear = new Date().getFullYear();
+
+>>>>>>> b970082614b8ebf2496b2719b6dcfce4512ada38
   // Month labels per period
   const deptMonthKeys = deptPeriod === "firstsem"
     ? [{label:"Aug",idx:7},{label:"Sep",idx:8},{label:"Oct",idx:9},{label:"Nov",idx:10},{label:"Dec",idx:11}]
@@ -529,6 +540,7 @@ function HomeTab({ expenses, allowance, allowanceType, user, allUsersExpenses })
     });
   }, [allUsersExpenses, deptStayType]);
 
+<<<<<<< HEAD
   // Each month: stacked bars = category pesos (Food, Transport, Other, School on top). deptPct = each dept's % of that month's total spend (tooltip).
   const deptChartData = deptMonthKeys.map(function(mk) {
     const monthExpAll = allUsersForDeptChart.reduce(function(arr, u) {
@@ -549,11 +561,22 @@ function HomeTab({ expenses, allowance, allowanceType, user, allUsersExpenses })
     DEPARTMENTS.forEach(function(dept) {
       const deptUsers = allUsersForDeptChart.filter(function(u) { return u.department === dept; });
       const monthExpDept = deptUsers.reduce(function(arr, u) {
+=======
+  // For each month, compute School expense % per department
+  // School expense % = (dept school expenses that month / dept total expenses that month) * 100
+  const deptChartData = deptMonthKeys.map(function(mk) {
+    const row = { month: mk.label };
+    DEPARTMENTS.forEach(function(dept, di) {
+      const deptUsers = allUsersForDeptChart.filter(function(u) { return u.department === dept; });
+      // All expenses for this dept in this month
+      const monthExp = deptUsers.reduce(function(arr, u) {
+>>>>>>> b970082614b8ebf2496b2719b6dcfce4512ada38
         return arr.concat(u.expenses.filter(function(e) {
           const d = new Date(e.timestamp || e.date || 0);
           return d.getMonth() === mk.idx && (deptPeriod === "yearly" ? d.getFullYear() === nowYear : true);
         }));
       }, []);
+<<<<<<< HEAD
       const deptTotal = monthExpDept.reduce(function(s, e) { return s + e.amount; }, 0);
       deptPct[dept] = totalAll > 0 ? Math.round((deptTotal / totalAll) * 100) : 0;
     });
@@ -574,6 +597,32 @@ function HomeTab({ expenses, allowance, allowanceType, user, allUsersExpenses })
     { key: "Other", fill: "#4CAF50", name: "Other" },
     { key: "School", fill: "#F5C518", name: "School (highlight)", stroke: "#1e3a8a", strokeWidth: 2 }
   ];
+=======
+      const totalAmt = monthExp.reduce(function(s, e) { return s + e.amount; }, 0);
+      const schoolAmt = monthExp.filter(function(e) { return e.category === "School"; }).reduce(function(s, e) { return s + e.amount; }, 0);
+      // Percentage of School expenses out of total
+      row[dept] = totalAmt > 0 ? Math.round((schoolAmt / totalAmt) * 100) : 0;
+    });
+    return row;
+  });
+
+  // Grand total school % per dept across whole period (for ranking)
+  const deptRanking = DEPARTMENTS.map(function(dept, di) {
+    const deptUsers = allUsersForDeptChart.filter(function(u) { return u.department === dept; });
+    const periodMonthIdxs = deptMonthKeys.map(function(mk) { return mk.idx; });
+    const allExp = deptUsers.reduce(function(arr, u) {
+      return arr.concat(u.expenses.filter(function(e) {
+        const d = new Date(e.timestamp || e.date || 0);
+        return periodMonthIdxs.includes(d.getMonth()) && (deptPeriod === "yearly" ? d.getFullYear() === nowYear : true);
+      }));
+    }, []);
+    const total = allExp.reduce(function(s, e) { return s + e.amount; }, 0);
+    const school = allExp.filter(function(e) { return e.category === "School"; }).reduce(function(s, e) { return s + e.amount; }, 0);
+    return { dept: dept, pct: total > 0 ? Math.round((school / total) * 100) : 0, color: DEPT_COLORS[di] };
+  }).sort(function(a, b) { return b.pct - a.pct; });
+
+  const deptPeriodLabel = deptPeriod === "firstsem" ? "1st Semester (Aug–Dec)" : deptPeriod === "secondsem" ? "2nd Semester (Jan–May)" : "Yearly (" + nowYear + ")";
+>>>>>>> b970082614b8ebf2496b2719b6dcfce4512ada38
 
   const catData = CATEGORIES.map(function(c, i) {
     return { name: c, value: expenses.filter(function(e) { return e.category === c; }).reduce(function(s, e) { return s + e.amount; }, 0), color: COLORS[i] };
@@ -696,6 +745,7 @@ function HomeTab({ expenses, allowance, allowanceType, user, allUsersExpenses })
           </div>
         )}
       </div>
+<<<<<<< HEAD
       {/* Department spending: stacked categories (pesos); tooltip = month + dept % of that month total */}
       <div className="card" style={{ marginTop: 16, overflow: "hidden" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4, flexWrap: "wrap", gap: 8 }}>
@@ -703,11 +753,25 @@ function HomeTab({ expenses, allowance, allowanceType, user, allUsersExpenses })
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "center", flexWrap: "wrap", marginBottom: 10 }}>
           <div style={{ display: "flex", background: "#f1f5f9", borderRadius: 10, padding: 3, gap: 3, maxWidth: "100%" }}>
+=======
+      {/* Department School Expense % Comparison Chart */}
+      <div className="card" style={{ marginTop: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4, flexWrap: "wrap", gap: 8 }}>
+          <p className="card-title" style={{ margin: 0 }}>🏫 School Expenses Comparison by Department</p>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "center", flexWrap: "wrap", marginBottom: 10 }}>
+          {/* Uwian / Boarding Toggle */}
+          <div style={{ display: "flex", background: "#f1f5f9", borderRadius: 10, padding: 3, gap: 3 }}>
+>>>>>>> b970082614b8ebf2496b2719b6dcfce4512ada38
             {[{ key: "uwian", label: "🏠 Uwian" }, { key: "boarding", label: "🏢 Boarding" }].map(function(t) {
               const isActive = deptStayType === t.key;
               return (
                 <button key={t.key} onClick={function() { setDeptStayType(t.key); }}
+<<<<<<< HEAD
                   style={{ padding: deptChartNarrow ? "6px 8px" : "5px 10px", border: "none", borderRadius: 8, fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: deptChartNarrow ? "0.68rem" : "0.72rem", cursor: "pointer", transition: "all 0.2s", flex: deptChartNarrow ? "1 1 44%" : "none",
+=======
+                  style={{ padding: "5px 10px", border: "none", borderRadius: 8, fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: "0.72rem", cursor: "pointer", transition: "all 0.2s",
+>>>>>>> b970082614b8ebf2496b2719b6dcfce4512ada38
                     background: isActive ? "#fff" : "transparent", color: isActive ? "#2563eb" : "#64748b",
                     boxShadow: isActive ? "0 2px 6px rgba(0,0,0,0.1)" : "none" }}>
                   {t.label}
@@ -715,13 +779,20 @@ function HomeTab({ expenses, allowance, allowanceType, user, allUsersExpenses })
               );
             })}
           </div>
+<<<<<<< HEAD
           <select value={deptPeriod} onChange={function(e) { setDeptPeriod(e.target.value); }}
             style={{ padding: deptChartNarrow ? "6px 8px" : "7px 12px", borderRadius: 10, border: "2px solid #e2e8f0", fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: deptChartNarrow ? "0.72rem" : "0.8rem", color: "#0f172a", background: "#f8fafc", cursor: "pointer", outline: "none", width: deptChartNarrow ? "100%" : "auto", maxWidth: "100%" }}>
+=======
+          {/* Semestral / Yearly Dropdown */}
+          <select value={deptPeriod} onChange={function(e) { setDeptPeriod(e.target.value); }}
+            style={{ padding: "7px 12px", borderRadius: 10, border: "2px solid #e2e8f0", fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: "0.8rem", color: "#0f172a", background: "#f8fafc", cursor: "pointer", outline: "none" }}>
+>>>>>>> b970082614b8ebf2496b2719b6dcfce4512ada38
             <option value="firstsem">1st Semester (Aug–Dec)</option>
             <option value="secondsem">2nd Semester (Jan–May)</option>
             <option value="yearly">Yearly</option>
           </select>
         </div>
+<<<<<<< HEAD
         <p style={{ fontSize: deptChartNarrow ? "0.68rem" : "0.73rem", color: "#94a3b8", marginBottom: 6, textAlign: "center", lineHeight: 1.45, padding: "0 4px" }}>
           {deptPeriodLabel} · Each column is one month: categories stack in pesos (Food, Transport, Other, then <strong style={{ color: "#ca8a04" }}>School</strong> on top with a bold outline). Only students matching <strong>{deptStayType === "uwian" ? "Uwian" : "Boarding"}</strong> are included.
         </p>
@@ -784,12 +855,45 @@ function HomeTab({ expenses, allowance, allowanceType, user, allUsersExpenses })
         </div>
         <p style={{ fontSize: "0.7rem", fontWeight: 700, color: "#64748b", marginBottom: 6, textAlign: "center" }}>Departments (tooltip colors)</p>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", justifyContent: "center" }}>
+=======
+        <p style={{ fontSize: "0.73rem", color: "#94a3b8", marginBottom: 6, textAlign: "center", lineHeight: 1.45 }}>
+          {deptPeriodLabel} · {deptStayType === "uwian" ? "Uwian" : "Boarding"} · Each bar is <strong style={{ color: "#4A90D9" }}>School</strong> spending as % of that department&apos;s <strong>total</strong> spending (Food, Transport, etc. only change the denominator).
+        </p>
+        <p style={{ fontSize: "0.68rem", color: "#94a3b8", marginBottom: 10, textAlign: "center", lineHeight: 1.45 }}>
+          Only students whose Allowance stay type matches this toggle are included. Food does not raise this %—only expenses in the <strong>School</strong> category do.
+        </p>
+
+        <ResponsiveContainer width="100%" height={240}>
+          <BarChart data={deptChartData} margin={{ top: 18, right: 8, left: 0, bottom: 4 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+            <XAxis dataKey="month" tick={{ fontSize: 10 }} />
+            <YAxis tick={{ fontSize: 10 }} tickFormatter={function(v) { return v + "%"; }} domain={[0, 100]} />
+            <Tooltip formatter={function(v, name) { return [v + "%", name]; }} labelFormatter={function(l) { return "Month: " + l; }} />
+            {DEPARTMENTS.map(function(dept, di) {
+              return (
+                <Bar key={dept} dataKey={dept} fill={DEPT_COLORS[di]} radius={[4,4,0,0]} name={dept}
+                  opacity={user && user.department === dept ? 1 : 0.7}>
+                  <LabelList dataKey={dept} position="top" formatter={function(v) { return v > 0 ? v + "%" : ""; }} style={{ fontSize: 9, fontWeight: 700, fill: DEPT_COLORS[di] }} />
+                </Bar>
+              );
+            })}
+          </BarChart>
+        </ResponsiveContainer>
+
+        {/* Horizontal Legend below chart */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 12, alignItems: "center", justifyContent: "center" }}>
+>>>>>>> b970082614b8ebf2496b2719b6dcfce4512ada38
           {DEPARTMENTS.map(function(dept, di) {
             const isMe = user && user.department === dept;
             return (
               <div key={dept} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+<<<<<<< HEAD
                 <span style={{ width: 11, height: 11, borderRadius: "50%", background: DEPT_COLORS[di], display: "inline-block", flexShrink: 0, boxShadow: isMe ? "0 0 0 2px " + DEPT_COLORS[di] + "55" : "none" }}/>
                 <span style={{ fontSize: deptChartNarrow ? "0.7rem" : "0.78rem", fontWeight: isMe ? 800 : 500, color: isMe ? DEPT_COLORS[di] : "#334155", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+=======
+                <span style={{ width: 12, height: 12, borderRadius: "50%", background: DEPT_COLORS[di], display: "inline-block", flexShrink: 0, boxShadow: isMe ? "0 0 0 2px " + DEPT_COLORS[di] + "55" : "none" }}/>
+                <span style={{ fontSize: "0.78rem", fontWeight: isMe ? 800 : 500, color: isMe ? DEPT_COLORS[di] : "#334155", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+>>>>>>> b970082614b8ebf2496b2719b6dcfce4512ada38
                   {dept}{isMe ? " ★" : ""}
                 </span>
               </div>

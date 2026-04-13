@@ -1,7 +1,12 @@
 {
   "projects": {
     "default": "kabudget-fed01"
+<<<<<<< HEAD
   },
   "targets": {},
   "etags": {}
 }
+=======
+  }
+}
+>>>>>>> b970082614b8ebf2496b2719b6dcfce4512ada38
