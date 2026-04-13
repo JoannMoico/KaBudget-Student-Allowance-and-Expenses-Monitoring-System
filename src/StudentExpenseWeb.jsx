@@ -98,6 +98,19 @@ const GLOBAL_STYLES = `
     .allowance-type-head-row { flex-direction:column; align-items:stretch; }
     .allowance-type-head-row .allowance-staytype-toggle { align-self:center; }
   }
+  /* Auth: room below fields so mobile keyboard scroll doesn’t hide inputs */
+  .auth-page-root { min-height:100vh; min-height:100dvh; padding:20px; box-sizing:border-box; }
+  @media (max-width:540px) {
+    .auth-page-root {
+      justify-content:flex-start !important;
+      align-items:center;
+      padding:16px 20px min(42vh,320px);
+      overflow-y:auto;
+      overflow-x:hidden;
+      -webkit-overflow-scrolling:touch;
+    }
+    .auth-input-scroll { scroll-margin-bottom:min(38vh,280px); }
+  }
 `;
 
 function formatDate(d) {
@@ -287,8 +300,17 @@ function AuthPage({ onLogin }) {
 
   function handleConfirmNo() { setShowConfirm(false); }
 
+  function scrollAuthFieldIntoView(e) {
+    var el = e.currentTarget;
+    requestAnimationFrame(function() {
+      setTimeout(function() {
+        el.scrollIntoView({ block: "center", behavior: "smooth" });
+      }, 280);
+    });
+  }
+
   return (
-    <div style={{ minHeight: "100vh", background: "linear-gradient(135deg,#0f172a 0%,#1e3a5f 50%,#0f172a 100%)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+    <div className="auth-page-root" style={{ background: "linear-gradient(135deg,#0f172a 0%,#1e3a5f 50%,#0f172a 100%)", display: "flex", alignItems: "center", justifyContent: "center" }}>
       <style>{GLOBAL_STYLES}</style>
       <div style={{ width: "100%", maxWidth: 440, opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(20px)", transition: "all 0.6s ease" }}>
         <div style={{ textAlign: "center", marginBottom: 36, animation: "float 3s ease-in-out infinite" }}>
@@ -303,17 +325,24 @@ function AuthPage({ onLogin }) {
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             {mode === "register" && (<>
-              <input ref={regNameRef} className="auth-input" placeholder="Full Name" value={form.name} onChange={function(e) { setForm({ ...form, name: e.target.value }); }}
+              <input ref={regNameRef} className="auth-input auth-input-scroll" placeholder="Full Name" value={form.name} onChange={function(e) { setForm({ ...form, name: e.target.value }); }}
+                onFocus={scrollAuthFieldIntoView}
                 onKeyDown={function(e) { if (e.key === "Enter") { e.preventDefault(); regAgeRef.current && regAgeRef.current.focus(); }}}
               />
-              <input ref={regAgeRef} className="auth-input" placeholder="Age" type="number" value={form.age} onChange={function(e) { setForm({ ...form, age: e.target.value }); }}
+              <input ref={regAgeRef} className="auth-input auth-input-scroll" placeholder="Age" type="number" value={form.age} onChange={function(e) { setForm({ ...form, age: e.target.value }); }}
+                onFocus={scrollAuthFieldIntoView}
                 onKeyDown={function(e) { if (e.key === "Enter") { e.preventDefault(); regDeptRef.current && regDeptRef.current.focus(); }}}
               />
-              <select ref={regDeptRef} className="auth-input" value={form.department} onChange={function(e) {
+              <select ref={regDeptRef} className="auth-input auth-input-scroll" value={form.department} onChange={function(e) {
                 var v = e.target.value;
                 setForm({ ...form, department: v });
-                if (v) setTimeout(function() { authEmailRef.current && authEmailRef.current.focus(); }, 0);
-              }} onKeyDown={function(e) { if (e.key === "Enter") { e.preventDefault(); authEmailRef.current && authEmailRef.current.focus(); }}}
+                if (v) setTimeout(function() {
+                  if (authEmailRef.current) {
+                    authEmailRef.current.focus();
+                    authEmailRef.current.scrollIntoView({ block: "center", behavior: "smooth" });
+                  }
+                }, 120);
+              }} onFocus={scrollAuthFieldIntoView} onKeyDown={function(e) { if (e.key === "Enter") { e.preventDefault(); authEmailRef.current && authEmailRef.current.focus(); }}}
                 style={{ cursor: "pointer" }}>
                 <option value="" disabled>Select Department</option>
                 <option value="CCS">CCS – College of Computer Studies</option>
@@ -324,14 +353,16 @@ function AuthPage({ onLogin }) {
                 <option value="HSD">High School Department</option>
               </select>
             </>)}
-            <input ref={authEmailRef} className="auth-input" placeholder="Email Address" type="email" value={form.email} onChange={function(e) { setForm({ ...form, email: e.target.value }); }}
+            <input ref={authEmailRef} className="auth-input auth-input-scroll" placeholder="Email Address" type="email" value={form.email} onChange={function(e) { setForm({ ...form, email: e.target.value }); }}
+              onFocus={scrollAuthFieldIntoView}
               onKeyDown={function(e) { if (e.key === "Enter") { e.preventDefault(); authPasswordRef.current && authPasswordRef.current.focus(); }}}
             />
             <div style={{ position: "relative" }}>
-              <input ref={authPasswordRef} className="auth-input" placeholder="Password"
+              <input ref={authPasswordRef} className="auth-input auth-input-scroll" placeholder="Password"
                 type={showPassword ? "text" : "password"}
                 value={form.password}
                 onChange={function(e) { setForm({ ...form, password: e.target.value }); }}
+                onFocus={scrollAuthFieldIntoView}
                 onKeyDown={function(e) { if (e.key === "Enter") { e.preventDefault(); handleSubmit(); }}}
                 style={{ paddingRight: 48 }} />
               <button type="button" onClick={function() { setShowPassword(function(p) { return !p; }); }}
