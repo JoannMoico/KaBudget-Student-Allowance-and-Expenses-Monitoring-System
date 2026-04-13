@@ -36,6 +36,13 @@ function expenseCalendarDateStr(e) {
   return "";
 }
 
+/** Normalize Firestore stayType for Uwian/Boarding chart filtering. */
+function normalizeStayType(st) {
+  if (st == null || st === "") return "uwian";
+  var s = String(st).trim().toLowerCase();
+  return s === "boarding" ? "boarding" : "uwian";
+}
+
 const TABS = ["home", "expenses", "allowance", "settings"];
 const TAB_ICONS = { home: "🏠", expenses: "💸", allowance: "💰", settings: "⚙️" };
 const TAB_LABELS = { home: "Home", expenses: "Expenses", allowance: "Allowance", settings: "Settings" };
@@ -368,6 +375,7 @@ function AuthPage({ onLogin }) {
                 <option value="CCJE">CCJE – College of Criminal Justice Education</option>
                 <option value="CN">CN – College of Nursing</option>
                 <option value="CBAA">CBAA – College of Business Administration and Accountancy</option>
+                <option value="CLA">CLA – Colleges of Liberal Arts</option>
                 <option value="HSD">High School Department</option>
               </select>
             </>)}
@@ -465,8 +473,8 @@ function AuthPage({ onLogin }) {
   );
 }
 
-const DEPARTMENTS = ["CCS","CE","CCJE","CN","CBAA","HSD"];
-const DEPT_COLORS = ["#1a6b3c","#2563eb","#7b1c1c","#e67e22","#f5c518","#e74c3c"];
+const DEPARTMENTS = ["CCS","CE","CCJE","CN","CBAA","CLA","HSD"];
+const DEPT_COLORS = ["#1a6b3c","#2563eb","#7b1c1c","#e67e22","#f5c518","#7c3aed","#e74c3c"];
 
 function HomeTab({ expenses, allowance, allowanceType, user, allUsersExpenses }) {
   // Compute effective allowance based on type
@@ -509,7 +517,7 @@ function HomeTab({ expenses, allowance, allowanceType, user, allUsersExpenses })
   // Only include users whose allowance stayType (Uwian vs Boarding) matches the chart toggle
   const allUsersForDeptChart = useMemo(function() {
     return (allUsersExpenses || []).filter(function(u) {
-      return (u.stayType || "uwian") === deptStayType;
+      return normalizeStayType(u.stayType) === deptStayType;
     });
   }, [allUsersExpenses, deptStayType]);
 
@@ -700,8 +708,11 @@ function HomeTab({ expenses, allowance, allowanceType, user, allUsersExpenses })
             <option value="yearly">Yearly</option>
           </select>
         </div>
-        <p style={{ fontSize: "0.73rem", color: "#94a3b8", marginBottom: 10, textAlign: "center" }}>
-          {deptPeriodLabel} · {deptStayType === "uwian" ? "🏠 Uwian" : "🏢 Boarding"} · Showing <strong style={{ color: "#4A90D9" }}>Department</strong> expenses as % of total
+        <p style={{ fontSize: "0.73rem", color: "#94a3b8", marginBottom: 6, textAlign: "center", lineHeight: 1.45 }}>
+          {deptPeriodLabel} · {deptStayType === "uwian" ? "Uwian" : "Boarding"} · Each bar is <strong style={{ color: "#4A90D9" }}>School</strong> spending as % of that department&apos;s <strong>total</strong> spending (Food, Transport, etc. only change the denominator).
+        </p>
+        <p style={{ fontSize: "0.68rem", color: "#94a3b8", marginBottom: 10, textAlign: "center", lineHeight: 1.45 }}>
+          Only students whose Allowance stay type matches this toggle are included. Food does not raise this %—only expenses in the <strong>School</strong> category do.
         </p>
 
         <ResponsiveContainer width="100%" height={240}>
@@ -963,7 +974,7 @@ function AllowanceTab({ allowance, setAllowance, allowanceType, setAllowanceType
             {[{ key: "uwian", label: "🏠 Uwian" }, { key: "boarding", label: "🏢 Boarding" }].map(function(t) {
               const isActive = stayType === t.key;
               return (
-                <button key={t.key} onClick={async function() { setStayType(t.key); if (allowance > 0) { try { await onSaveAllowance(allowance, allowanceType, semester, t.key); } catch {} } setToast({ msg: t.label + " selected!", type: "success" }); }}
+                <button key={t.key} onClick={async function() { setStayType(t.key); try { await onSaveAllowance(allowance, allowanceType, semester, t.key); } catch {} setToast({ msg: t.label + " selected!", type: "success" }); }}
                   style={{ padding: "6px 12px", border: "none", borderRadius: 8, fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: "0.76rem", cursor: "pointer", transition: "all 0.2s",
                     background: isActive ? "#fff" : "transparent",
                     color: isActive ? "#16a34a" : "#64748b",
@@ -1232,6 +1243,7 @@ function SettingsTab({ user, setUser, onLogout, onUpdateProfile }) {
               <option value="CCJE">CCJE – College of Criminal Justice Education</option>
               <option value="CN">CN – College of Nursing</option>
               <option value="CBAA">CBAA – College of Business Administration and Accountancy</option>
+              <option value="CLA">CLA – Colleges of Liberal Arts</option>
               <option value="HSD">High School Department</option>
             </select>
           </div>
@@ -1326,7 +1338,7 @@ export default function App() {
           setAllowance(data.amount || 0);
           setAllowanceType(data.allowanceType || "monthly");
           setSemester(data.semester || "firstsem");
-          setStayType(data.stayType || "uwian");
+          setStayType(normalizeStayType(data.stayType));
         }
       },
       function(err) { console.warn("Allowance:", err.message); }
@@ -1370,8 +1382,7 @@ export default function App() {
           try {
             const allowSnap = await getDoc(doc(db, "allowances", uid));
             if (allowSnap.exists()) {
-              var st = allowSnap.data().stayType;
-              stayType = st === "boarding" ? "boarding" : "uwian";
+              stayType = normalizeStayType(allowSnap.data().stayType);
             }
           } catch (e) { /* rules may block; default uwian */ }
           try {
