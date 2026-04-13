@@ -47,6 +47,38 @@ function normalizeStayType(st) {
   return s === "boarding" ? "boarding" : "uwian";
 }
 
+function startOfWeek(d) {
+  var x = new Date(d);
+  var day = x.getDay();
+  var diff = day === 0 ? -6 : 1 - day;
+  x.setHours(0, 0, 0, 0);
+  x.setDate(x.getDate() + diff);
+  return x;
+}
+
+function isAllowanceActiveForType(type, updatedAtIso) {
+  if (!updatedAtIso) return false;
+  var updated = new Date(updatedAtIso);
+  if (isNaN(updated.getTime())) return false;
+  var now = new Date();
+  if (type === "daily") return localDateYYYYMMDD(updated) === localDateYYYYMMDD(now);
+  if (type === "weekly") return startOfWeek(updated).getTime() === startOfWeek(now).getTime();
+  if (type === "monthly") return updated.getMonth() === now.getMonth() && updated.getFullYear() === now.getFullYear();
+  return false;
+}
+
+function expenseInActiveAllowancePeriod(expense, allowanceType) {
+  var expenseDateStr = expenseCalendarDateStr(expense);
+  if (!expenseDateStr) return false;
+  var expDate = new Date(expenseDateStr + "T00:00:00");
+  if (isNaN(expDate.getTime())) return false;
+  var now = new Date();
+  if (allowanceType === "daily") return localDateYYYYMMDD(expDate) === localDateYYYYMMDD(now);
+  if (allowanceType === "weekly") return startOfWeek(expDate).getTime() === startOfWeek(now).getTime();
+  if (allowanceType === "monthly") return expDate.getMonth() === now.getMonth() && expDate.getFullYear() === now.getFullYear();
+  return true;
+}
+
 const TABS = ["home", "expenses", "allowance", "settings"];
 const TAB_ICONS = { home: "🏠", expenses: "💸", allowance: "💰", settings: "⚙️" };
 const TAB_LABELS = { home: "Home", expenses: "Expenses", allowance: "Allowance", settings: "Settings" };
@@ -480,16 +512,18 @@ function AuthPage({ onLogin }) {
 const DEPARTMENTS = ["CCS","CE","CCJE","CN","CBAA","CLA","HSD"];
 const DEPT_COLORS = ["#1a6b3c","#2563eb","#7b1c1c","#e67e22","#f5c518","#7c3aed","#e74c3c"];
 
-function HomeTab({ expenses, allowance, allowanceType, user, allUsersExpenses }) {
+function HomeTab({ expenses, allowance, allowanceType, allowanceUpdatedAt, user, allUsersExpenses }) {
   // Compute effective allowance based on type
-  const effectiveAllowance = allowance; // use raw amount user entered — what they see is what they get
+  const allowanceIsActive = isAllowanceActiveForType(allowanceType, allowanceUpdatedAt);
+  const activeExpenses = expenses.filter(function(e) { return expenseInActiveAllowancePeriod(e, allowanceType); });
+  const effectiveAllowance = allowanceIsActive ? allowance : 0;
   const allowanceLabel = allowanceType === "daily" ? "Daily Allowance" : allowanceType === "weekly" ? "Weekly Allowance" : "Monthly Allowance";
   const allowanceIcon = allowanceType === "daily" ? "📅" : allowanceType === "weekly" ? "📆" : "🗓️";
 
-  const total = expenses.reduce(function(s, e) { return s + e.amount; }, 0);
-  const remaining = allowance - total;
+  const total = activeExpenses.reduce(function(s, e) { return s + e.amount; }, 0);
+  const remaining = effectiveAllowance - total;
   const isOver = remaining < 0;
-  const pct = Math.min(allowance > 0 ? (total / allowance) * 100 : 0, 100);
+  const pct = Math.min(effectiveAllowance > 0 ? (total / effectiveAllowance) * 100 : 0, 100);
   const rafRef = useRef(null);
   const [barW, setBarW] = useState(0);
   useEffect(function() {
@@ -625,17 +659,17 @@ function HomeTab({ expenses, allowance, allowanceType, user, allUsersExpenses })
 >>>>>>> b970082614b8ebf2496b2719b6dcfce4512ada38
 
   const catData = CATEGORIES.map(function(c, i) {
-    return { name: c, value: expenses.filter(function(e) { return e.category === c; }).reduce(function(s, e) { return s + e.amount; }, 0), color: COLORS[i] };
+    return { name: c, value: activeExpenses.filter(function(e) { return e.category === c; }).reduce(function(s, e) { return s + e.amount; }, 0), color: COLORS[i] };
   }).filter(function(d) { return d.value > 0; });
 
-  const foodTotal = expenses.filter(function(e) { return e.category === "Food"; }).reduce(function(s, e) { return s + e.amount; }, 0);
-  const transportTotal = expenses.filter(function(e) { return e.category === "Transport"; }).reduce(function(s, e) { return s + e.amount; }, 0);
+  const foodTotal = activeExpenses.filter(function(e) { return e.category === "Food"; }).reduce(function(s, e) { return s + e.amount; }, 0);
+  const transportTotal = activeExpenses.filter(function(e) { return e.category === "Transport"; }).reduce(function(s, e) { return s + e.amount; }, 0);
   const topCategory = catData.length > 0 ? catData.reduce(function(a, b) { return a.value > b.value ? a : b; }) : null;
 
   const tips = [];
-  if (allowance === 0) {
+  if (!allowanceIsActive || effectiveAllowance === 0) {
     tips.push({ icon: "👋", color: "#4A90D9", bg: "#e0f2fe", text: "Welcome! Please set your allowance first in the Allowance tab so we can start tracking your budget." });
-  } else if (expenses.length === 0) {
+  } else if (activeExpenses.length === 0) {
     tips.push({ icon: "📝", color: "#4A90D9", bg: "#e0f2fe", text: "Start adding your daily expenses so we can give you personalized budget tips!" });
   } else {
     if (isOver) {
@@ -653,10 +687,10 @@ function HomeTab({ expenses, allowance, allowanceType, user, allUsersExpenses })
         tips.push({ icon: "📌", color: "#FF6B35", bg: "#fff7f5", text: topCategory.name + " takes up " + topPct + "% of your total spending. Try to find ways to spend less on " + topCategory.name.toLowerCase() + "." });
       }
     }
-    if (foodTotal > 0 && allowance > 0 && (foodTotal / allowance) > 0.5) {
+    if (foodTotal > 0 && effectiveAllowance > 0 && (foodTotal / effectiveAllowance) > 0.5) {
       tips.push({ icon: "🍱", color: "#FF6B35", bg: "#fff7f5", text: "You are spending more than half of your allowance on food. Try bringing packed lunch to save more!" });
     }
-    if (transportTotal > 0 && allowance > 0 && (transportTotal / allowance) > 0.3) {
+    if (transportTotal > 0 && effectiveAllowance > 0 && (transportTotal / effectiveAllowance) > 0.3) {
       tips.push({ icon: "🚌", color: "#4A90D9", bg: "#e0f2fe", text: "Transport is taking up a big part of your budget. Try walking if your destination is not that far — you can save money and get some exercise too!" });
     }
     if (remaining > 0 && !isOver) {
@@ -665,7 +699,7 @@ function HomeTab({ expenses, allowance, allowanceType, user, allUsersExpenses })
   }
 
   const cards = [
-    { label: allowanceLabel, val: allowance, icon: allowanceIcon, bg: "linear-gradient(135deg,#4A90D9,#2563eb)" },
+    { label: allowanceLabel, val: effectiveAllowance, icon: allowanceIcon, bg: "linear-gradient(135deg,#4A90D9,#2563eb)" },
     { label: "Total Spent", val: total, icon: "💸", bg: "linear-gradient(135deg,#FF6B35,#d94f1a)" },
     { label: "Remaining", val: Math.abs(remaining), icon: isOver ? "🔴" : "✅", bg: isOver ? "linear-gradient(135deg,#e74c3c,#c0392b)" : "linear-gradient(135deg,#4CAF50,#2e7d32)" },
   ];
@@ -1062,7 +1096,7 @@ function ExpensesTab({ expenses, onAddExpense, onUpdateExpense, onDeleteExpense 
   );
 }
 
-function AllowanceTab({ allowance, setAllowance, allowanceType, setAllowanceType, semester, setSemester, stayType, setStayType, expenses, onSaveAllowance }) {
+function AllowanceTab({ allowance, setAllowance, allowanceType, setAllowanceType, allowanceUpdatedAt, semester, setSemester, stayType, setStayType, expenses, onSaveAllowance }) {
   const [input, setInput] = useState(String(allowance || ""));
   useEffect(function() { if (allowance > 0) setInput(String(allowance)); }, [allowance]);
   const [period, setPeriod] = useState("monthly");
@@ -1112,8 +1146,10 @@ function AllowanceTab({ allowance, setAllowance, allowanceType, setAllowanceType
   const semesterFilteredData = semester === "firstsem" ? firstSemData : secondSemData;
   const chartData = period === "daily" ? dailyData : period === "weekly" ? weeklyData : period === "monthly" ? monthlyData : period === "yearly" ? yearlyData : semesterFilteredData;
   const xKey = period === "weekly" ? "week" : period === "daily" ? "day" : "month";
-  const totalSpent = expenses.reduce(function(s, e) { return s + e.amount; }, 0);
-  const activeAllowance = allowanceType === "weekly" ? effectiveMonthly : allowance;
+  const activeAllowanceNow = isAllowanceActiveForType(allowanceType, allowanceUpdatedAt) ? allowance : 0;
+  const activePeriodExpenses = expenses.filter(function(e) { return expenseInActiveAllowancePeriod(e, allowanceType); });
+  const totalSpent = activePeriodExpenses.reduce(function(s, e) { return s + e.amount; }, 0);
+  const activeAllowance = activeAllowanceNow;
   const pieData = [{ name: "Spent", value: totalSpent }, { name: "Remaining", value: Math.max(0, activeAllowance - totalSpent) }];
 
   return (
@@ -1441,6 +1477,7 @@ export default function App() {
   const [tab, setTab] = useState("home");
   const [allowance, setAllowance] = useState(0);
   const [allowanceType, setAllowanceType] = useState("monthly");
+  const [allowanceUpdatedAt, setAllowanceUpdatedAt] = useState("");
   const [semester, setSemester] = useState("firstsem");
   const [stayType, setStayType] = useState("uwian");
   const [expenses, setExpenses] = useState([]);
@@ -1471,6 +1508,7 @@ export default function App() {
         setExpenseSyncError(null);
         setAllowance(0);
         setAllowanceType("monthly");
+        setAllowanceUpdatedAt("");
         setAuthLoading(false);
       }
     });
@@ -1491,8 +1529,13 @@ export default function App() {
           const data = snap.data();
           setAllowance(data.amount || 0);
           setAllowanceType(data.allowanceType || "monthly");
+          setAllowanceUpdatedAt(data.updatedAt || "");
           setSemester(data.semester || "firstsem");
           setStayType(normalizeStayType(data.stayType));
+        } else {
+          setAllowance(0);
+          setAllowanceType("monthly");
+          setAllowanceUpdatedAt("");
         }
       },
       function(err) { console.warn("Allowance:", err.message); }
@@ -1625,6 +1668,7 @@ export default function App() {
     setExpenseSyncError(null);
     setAllowance(0);
     setAllowanceType("monthly");
+    setAllowanceUpdatedAt("");
   }
 
   // Show loading spinner while Firebase checks auth state
@@ -1661,9 +1705,9 @@ export default function App() {
               )}
             </div>
           )}
-          {tab === "home" && <HomeTab expenses={expenses} allowance={allowance} allowanceType={allowanceType} user={user} allUsersExpenses={allUsersExpenses} />}
+          {tab === "home" && <HomeTab expenses={expenses} allowance={allowance} allowanceType={allowanceType} allowanceUpdatedAt={allowanceUpdatedAt} user={user} allUsersExpenses={allUsersExpenses} />}
           {tab === "expenses" && <ExpensesTab expenses={expenses} onAddExpense={handleAddExpense} onUpdateExpense={handleUpdateExpense} onDeleteExpense={handleDeleteExpense} />}
-          {tab === "allowance" && <AllowanceTab allowance={allowance} setAllowance={setAllowance} allowanceType={allowanceType} setAllowanceType={setAllowanceType} semester={semester} setSemester={setSemester} stayType={stayType} setStayType={setStayType} expenses={expenses} onSaveAllowance={handleSaveAllowance} />}
+          {tab === "allowance" && <AllowanceTab allowance={allowance} setAllowance={setAllowance} allowanceType={allowanceType} setAllowanceType={setAllowanceType} allowanceUpdatedAt={allowanceUpdatedAt} semester={semester} setSemester={setSemester} stayType={stayType} setStayType={setStayType} expenses={expenses} onSaveAllowance={handleSaveAllowance} />}
           {tab === "settings" && <SettingsTab user={user} setUser={setUser} onLogout={handleLogout} onUpdateProfile={handleUpdateProfile} />}
         </div>
         <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "#fff", borderTop: "1px solid #e2e8f0", display: "flex", justifyContent: "space-around", padding: "8px 0 12px", boxShadow: "0 -4px 20px rgba(0,0,0,0.08)" }}>
