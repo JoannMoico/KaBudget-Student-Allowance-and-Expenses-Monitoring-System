@@ -9,12 +9,13 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
+  deleteUser,
   onAuthStateChanged,
   sendPasswordResetEmail
 } from "firebase/auth";
 import {
   doc, setDoc, getDoc, collection, getDocs,
-  addDoc, updateDoc, deleteDoc, onSnapshot
+  addDoc, updateDoc, deleteDoc, onSnapshot, deleteField
 } from "firebase/firestore";
 import { ref, uploadString, getDownloadURL, deleteObject } from "firebase/storage";
 
@@ -350,6 +351,10 @@ function AuthPage({ onLogin }) {
       };
       // Save user profile to Firestore
       await setDoc(doc(db, "users", uid), userData);
+      // Also index user under users/departments -> Departments/{DEPT}/users/{uid}
+      await setDoc(doc(db, "users", "departments"), {}, { merge: true });
+      await setDoc(doc(db, "users", "departments", "Departments", form.department), { name: form.department }, { merge: true });
+      await setDoc(doc(db, "users", "departments", "Departments", form.department, "users", uid), userData, { merge: true });
       setToast({ msg: "Welcome, " + form.name.split(" ")[0] + "! 🎉 Account created!", type: "success" });
       setTimeout(function() { onLogin(userData); }, 1000);
     } catch(e) {
@@ -1291,11 +1296,12 @@ function Avatar({ user, size }) {
   );
 }
 
-function SettingsTab({ user, setUser, onLogout, onUpdateProfile }) {
+function SettingsTab({ user, setUser, onLogout, onDeleteAccount, onUpdateProfile }) {
   const [form, setForm] = useState({ name: user.name || "", age: String(user.age || ""), department: user.department || "", password: "" });
   const [toast, setToast] = useState(null);
   const fileRef = useRef(null);
   const [confirmLogout, setConfirmLogout] = useState(false);
+  const [confirmDeleteAccount, setConfirmDeleteAccount] = useState(false);
   const [confirmSave, setConfirmSave] = useState(false);
   const [confirmRemovePhoto, setConfirmRemovePhoto] = useState(false);
 
@@ -1420,14 +1426,25 @@ function SettingsTab({ user, setUser, onLogout, onUpdateProfile }) {
       {/* Danger Zone */}
       <div className="card" style={{ border: "2px solid #fee2e2" }}>
         <p className="card-title" style={{ color: "#e74c3c" }}>⚠️ Danger Zone</p>
-        <button onClick={function() { setConfirmLogout(true); }} style={{ width: "100%", padding: "13px", border: "2px solid #e74c3c", borderRadius: 12, background: "transparent", color: "#e74c3c", fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: "0.95rem", cursor: "pointer" }}>
+        <button onClick={function() { setConfirmLogout(true); }} style={{ width: "100%", padding: "13px", border: "2px solid #e74c3c", borderRadius: 12, background: "transparent", color: "#e74c3c", fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: "0.95rem", cursor: "pointer", marginBottom: 10 }}>
           🚪 Log Out
+        </button>
+        <button onClick={function() { setConfirmDeleteAccount(true); }} style={{ width: "100%", padding: "13px", border: "2px solid #b91c1c", borderRadius: 12, background: "#fee2e2", color: "#b91c1c", fontFamily: "'Sora',sans-serif", fontWeight: 800, fontSize: "0.95rem", cursor: "pointer" }}>
+          🗑️ Delete Account
         </button>
       </div>
       {toast && <Toast msg={toast.msg} type={toast.type} onDone={function() { setToast(null); }} />}
       <ConfirmModal show={confirmLogout} title="Log Out?" message="Are you sure you want to log out of KaBudget?"
         yesLabel="Yes, Log Out" noLabel="Cancel" yesColor="#e74c3c"
         onYes={onLogout} onNo={function() { setConfirmLogout(false); }} />
+      <ConfirmModal show={confirmDeleteAccount} title="Delete Account?" message="Are you sure you want to permanently delete your account and all your data? This cannot be undone."
+        yesLabel="Yes, Delete Account" noLabel="Cancel" yesColor="#b91c1c"
+        onYes={async function() {
+          try { await onDeleteAccount(); }
+          catch (e) { setToast({ msg: "Error: " + (e && e.message ? e.message : "Could not delete account."), type: "error" }); }
+          finally { setConfirmDeleteAccount(false); }
+        }}
+        onNo={function() { setConfirmDeleteAccount(false); }} />
       <ConfirmModal show={confirmSave} title="Update Profile?" message="Do you want to save your profile changes?"
         yesLabel="Yes, Save" noLabel="Cancel" yesColor="#4A90D9"
         onYes={async function() {
@@ -1574,9 +1591,22 @@ export default function App() {
     async function loadAllUsers() {
       try {
         const usersSnap = await getDocs(collection(db, "users"));
-        const allData = await Promise.all(usersSnap.docs.map(async function(userDoc) {
+        const userDocs = usersSnap.docs.filter(function(d) { return d.id !== "departments"; });
+        const allData = await Promise.all(userDocs.map(async function(userDoc) {
           const uid = userDoc.id;
           const userData = userDoc.data();
+          const dept = userData.department || "Other";
+          // Backfill/keep department subcollection in sync for existing users.
+          await setDoc(doc(db, "users", "departments"), {}, { merge: true }).catch(function() {});
+          await setDoc(doc(db, "users", "departments", "Departments", dept), { name: dept }, { merge: true }).catch(function() {});
+          await setDoc(doc(db, "users", "departments", "Departments", dept, "users", uid), {
+            uid: uid,
+            name: userData.name || "",
+            email: userData.email || "",
+            age: Number(userData.age || 0),
+            department: dept,
+            date_created: userData.date_created || new Date().toISOString()
+          }, { merge: true }).catch(function() {});
           var stayType = "uwian";
           try {
             const allowSnap = await getDoc(doc(db, "allowances", uid));
@@ -1607,17 +1637,12 @@ export default function App() {
     const monthKey = String(now.getFullYear()) + "-" + String(now.getMonth() + 1).padStart(2, "0");
     const historyKey = type === "daily" ? nowLocalDate : type === "weekly" ? weekKey : monthKey;
 
-    let prevHistory = { daily: {}, weekly: {}, monthly: {} };
+    let prevHistory = {};
     try {
       const allowSnap = await getDoc(allowanceRef);
       if (allowSnap.exists()) {
         const data = allowSnap.data() || {};
-        const h = data.history || {};
-        prevHistory = {
-          daily: h.daily || {},
-          weekly: h.weekly || {},
-          monthly: h.monthly || {}
-        };
+        prevHistory = data.history || {};
       }
     } catch (e) {
       // If read fails, still proceed with writing the latest allowance.
@@ -1638,6 +1663,15 @@ export default function App() {
     const effectiveMonthlyVal = type === "daily" ? amount * 30 : type === "weekly" ? amount * 4 : amount;
     const effectiveWeeklyVal  = type === "daily" ? amount * 7  : type === "weekly" ? amount : Math.round(amount / 4);
     const effectiveDailyVal   = type === "daily" ? amount : type === "weekly" ? Math.round(amount / 7) : Math.round(amount / 30);
+    var historyCleanup = {};
+    if (type === "daily") {
+      historyCleanup = { "history.weekly": deleteField(), "history.monthly": deleteField() };
+    } else if (type === "weekly") {
+      historyCleanup = { "history.daily": deleteField(), "history.monthly": deleteField() };
+    } else if (type === "monthly") {
+      historyCleanup = { "history.daily": deleteField(), "history.weekly": deleteField() };
+    }
+
     await setDoc(allowanceRef, {
       amount: amount,
       allowanceType: type,
@@ -1647,8 +1681,29 @@ export default function App() {
       computed_weekly: effectiveWeeklyVal,
       computed_monthly: effectiveMonthlyVal,
       updatedAt: nowIso,
-      history: nextHistory
+      history: nextHistory,
+      ...historyCleanup
     }, { merge: true });
+
+    // Mirror under allowances/departments/Departments/{DEPT}/users/{uid}
+    const dept = (user && user.department) ? user.department : "Other";
+    await setDoc(doc(db, "allowances", "departments"), {}, { merge: true }).catch(function() {});
+    await setDoc(doc(db, "allowances", "departments", "Departments", dept), { name: dept }, { merge: true }).catch(function() {});
+    await setDoc(doc(db, "allowances", "departments", "Departments", dept, "users", user.uid), {
+      uid: user.uid,
+      name: user.name || "",
+      email: user.email || "",
+      department: dept,
+      amount: amount,
+      allowanceType: type,
+      semester: sem,
+      stayType: stay,
+      computed_daily: effectiveDailyVal,
+      computed_weekly: effectiveWeeklyVal,
+      computed_monthly: effectiveMonthlyVal,
+      updatedAt: nowIso,
+      history: nextHistory
+    }, { merge: true }).catch(function() {});
   }
 
   // ── Save Expense to Firestore ─────────────────────────────────
@@ -1693,7 +1748,36 @@ export default function App() {
   // ── Update User Profile in Firestore ─────────────────────────
   async function handleUpdateProfile(updatedData) {
     if (!user) return;
+    const prevDept = user.department || "";
+    const nextDept = updatedData.department || prevDept;
     await setDoc(doc(db, "users", user.uid), updatedData, { merge: true });
+    // Keep department index in sync, but never block profile updates on index permission issues.
+    try {
+      if (prevDept && nextDept && prevDept !== nextDept) {
+        await deleteDoc(doc(db, "users", "departments", "Departments", prevDept, "users", user.uid)).catch(function() {});
+        await deleteDoc(doc(db, "allowances", "departments", "Departments", prevDept, "users", user.uid)).catch(function() {});
+      }
+      if (nextDept) {
+        await setDoc(doc(db, "users", "departments"), {}, { merge: true });
+        await setDoc(doc(db, "users", "departments", "Departments", nextDept), { name: nextDept }, { merge: true });
+        await setDoc(doc(db, "users", "departments", "Departments", nextDept, "users", user.uid), { ...user, ...updatedData, uid: user.uid }, { merge: true });
+        await setDoc(doc(db, "allowances", "departments"), {}, { merge: true });
+        await setDoc(doc(db, "allowances", "departments", "Departments", nextDept), { name: nextDept }, { merge: true });
+        await setDoc(doc(db, "allowances", "departments", "Departments", nextDept, "users", user.uid), {
+          uid: user.uid,
+          name: (updatedData.name != null ? updatedData.name : user.name) || "",
+          email: user.email || "",
+          department: nextDept,
+          amount: allowance,
+          allowanceType: allowanceType,
+          semester: semester,
+          stayType: stayType,
+          updatedAt: allowanceUpdatedAt || new Date().toISOString()
+        }, { merge: true });
+      }
+    } catch (e) {
+      console.warn("Department index sync skipped:", e && e.message ? e.message : e);
+    }
     setUser(function(prev) { return { ...prev, ...updatedData }; });
   }
 
@@ -1701,6 +1785,34 @@ export default function App() {
 
   async function handleLogout() {
     await signOut(auth);
+    setUser(null);
+    setTab("home");
+    setExpenses([]);
+    setExpenseSyncError(null);
+    setAllowance(0);
+    setAllowanceType("monthly");
+    setAllowanceUpdatedAt("");
+    setAllowanceHistory({ daily: {}, weekly: {}, monthly: {} });
+  }
+
+  async function handleDeleteAccount() {
+    if (!user || !auth.currentUser) return;
+    const uid = user.uid;
+    const dept = user.department || "";
+
+    const expenseSnap = await getDocs(collection(db, "expenses", uid, "records"));
+    await Promise.all(expenseSnap.docs.map(function(d) {
+      return deleteDoc(doc(db, "expenses", uid, "records", d.id));
+    }));
+
+    await Promise.all([
+      deleteDoc(doc(db, "allowances", uid)).catch(function() {}),
+      deleteDoc(doc(db, "users", uid)).catch(function() {}),
+      (dept ? deleteDoc(doc(db, "users", "departments", "Departments", dept, "users", uid)).catch(function() {}) : Promise.resolve()),
+      (dept ? deleteDoc(doc(db, "allowances", "departments", "Departments", dept, "users", uid)).catch(function() {}) : Promise.resolve())
+    ]);
+
+    await deleteUser(auth.currentUser);
     setUser(null);
     setTab("home");
     setExpenses([]);
@@ -1748,7 +1860,7 @@ export default function App() {
           {tab === "home" && <HomeTab expenses={expenses} allowance={allowance} allowanceType={allowanceType} allowanceUpdatedAt={allowanceUpdatedAt} user={user} allUsersExpenses={allUsersExpenses} />}
           {tab === "expenses" && <ExpensesTab expenses={expenses} onAddExpense={handleAddExpense} onUpdateExpense={handleUpdateExpense} onDeleteExpense={handleDeleteExpense} />}
           {tab === "allowance" && <AllowanceTab allowance={allowance} setAllowance={setAllowance} allowanceType={allowanceType} setAllowanceType={setAllowanceType} allowanceUpdatedAt={allowanceUpdatedAt} semester={semester} setSemester={setSemester} stayType={stayType} setStayType={setStayType} expenses={expenses} onSaveAllowance={handleSaveAllowance} allowanceHistory={allowanceHistory} />}
-          {tab === "settings" && <SettingsTab user={user} setUser={setUser} onLogout={handleLogout} onUpdateProfile={handleUpdateProfile} />}
+          {tab === "settings" && <SettingsTab user={user} setUser={setUser} onLogout={handleLogout} onDeleteAccount={handleDeleteAccount} onUpdateProfile={handleUpdateProfile} />}
         </div>
         <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "#fff", borderTop: "1px solid #e2e8f0", display: "flex", justifyContent: "space-around", padding: "8px 0 12px", boxShadow: "0 -4px 20px rgba(0,0,0,0.08)" }}>
           {TABS.map(function(t) {
