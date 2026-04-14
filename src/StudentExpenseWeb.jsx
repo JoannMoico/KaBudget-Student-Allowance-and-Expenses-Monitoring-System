@@ -82,7 +82,7 @@ function expenseInActiveAllowancePeriod(expense, allowanceType) {
   return true;
 }
 
-const TABS = ["home", "expenses", "allowance", "settings"];
+const TABS = ["home", "allowance", "expenses", "settings"];
 const TAB_ICONS = { home: "🏠", expenses: "💸", allowance: "💰", settings: "⚙️" };
 const TAB_LABELS = { home: "Home", expenses: "Expenses", allowance: "Allowance", settings: "Settings" };
 
@@ -841,6 +841,9 @@ function HomeTab({ expenses, allowance, allowanceType, allowanceUpdatedAt, user,
 }
 
 function ExpensesTab({ expenses, onAddExpense, onUpdateExpense, onDeleteExpense }) {
+  function defaultExpenseForm() {
+    return { date: localDateYYYYMMDD(new Date()), category: "Food", amount: "", note: "" };
+  }
   const [form, setForm] = useState({ date: localDateYYYYMMDD(new Date()), category: "Food", amount: "", note: "" });
   const [editId, setEditId] = useState(null);
   const [period, setPeriod] = useState("monthly");
@@ -848,6 +851,7 @@ function ExpensesTab({ expenses, onAddExpense, onUpdateExpense, onDeleteExpense 
   const [showForm, setShowForm] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null); // expense id to delete
   const [confirmUpdate, setConfirmUpdate] = useState(false);
+  const [confirmCreate, setConfirmCreate] = useState(false);
 
   const filtered = useMemo(function() {
     const now = new Date();
@@ -882,25 +886,38 @@ function ExpensesTab({ expenses, onAddExpense, onUpdateExpense, onDeleteExpense 
         await onAddExpense({ date: form.date, category: form.category, amount: Number(form.amount), note: form.note });
         setToast({ msg: "Expense added! ✅", type: "success" });
       }
-      setForm({ date: localDateYYYYMMDD(new Date()), category: "Food", amount: "", note: "" });
-      setShowForm(false); setConfirmUpdate(false);
+      setForm(defaultExpenseForm());
+      setShowForm(false); setConfirmUpdate(false); setConfirmCreate(false);
     } catch(e) { setToast({ msg: "Error: " + e.message, type: "error" }); }
   }
 
   function handleSave() {
     if (!form.amount || isNaN(form.amount) || Number(form.amount) <= 0) { setToast({ msg: "Enter a valid amount!", type: "error" }); return; }
     if (editId) { setConfirmUpdate(true); } // ask confirm before update
-    else { doSave(); }
+    else { setConfirmCreate(true); } // ask confirm before create
   }
 
   function handleEdit(exp) { setForm({ date: exp.date || localDateYYYYMMDD(new Date()), category: exp.category, amount: String(exp.amount), note: exp.note || "" }); setEditId(exp.id); setShowForm(true); }
   function handleDelete(id) { setConfirmDelete(id); } // show confirm before delete
+  function handleToggleAddForm() {
+    if (showForm) {
+      setShowForm(false);
+      setEditId(null);
+      setForm(defaultExpenseForm());
+      setConfirmUpdate(false);
+      setConfirmCreate(false);
+      return;
+    }
+    setEditId(null);
+    setForm(defaultExpenseForm());
+    setShowForm(true);
+  }
 
   return (
     <div style={{ animation: "fadeUp 0.4s ease" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
         <h2 style={{ fontWeight: 800, color: "#0f172a", fontSize: "1.15rem" }}>💸 Expenses</h2>
-        <button className="btn-primary" onClick={function() { setShowForm(!showForm); }}>{showForm ? "✕ Cancel" : "+ Add"}</button>
+        <button className="btn-primary" onClick={handleToggleAddForm}>{showForm ? "✕ Cancel" : "+ Add"}</button>
       </div>
       {showForm && (
         <div className="card" style={{ marginBottom: 20, border: "2px solid #e0f2fe", animation: "fadeUp 0.3s ease" }}>
@@ -993,17 +1010,21 @@ function ExpensesTab({ expenses, onAddExpense, onUpdateExpense, onDeleteExpense 
       <ConfirmModal show={confirmUpdate} title="Update Expense?" message="Do you want to save the changes to this expense?"
         yesLabel="Yes, Update" noLabel="Cancel" yesColor="#4A90D9"
         onYes={doSave} onNo={function() { setConfirmUpdate(false); }} />
+      <ConfirmModal show={confirmCreate} title="Save Expense?" message="Do you want to save this new expense entry?"
+        yesLabel="Yes, Save" noLabel="Cancel" yesColor="#4A90D9"
+        onYes={doSave} onNo={function() { setConfirmCreate(false); }} />
     </div>
   );
 }
 
-function AllowanceTab({ allowance, setAllowance, allowanceType, setAllowanceType, allowanceUpdatedAt, semester, setSemester, stayType, setStayType, expenses, onSaveAllowance }) {
-  const [input, setInput] = useState(String(allowance || ""));
-  useEffect(function() { if (allowance > 0) setInput(String(allowance)); }, [allowance]);
+function AllowanceTab({ allowance, setAllowance, allowanceType, setAllowanceType, allowanceUpdatedAt, semester, setSemester, stayType, setStayType, expenses, onSaveAllowance, allowanceHistory }) {
+  const [input, setInput] = useState(String(allowance || 0));
+  useEffect(function() { setInput(String(allowance || 0)); }, [allowance]);
   const [period, setPeriod] = useState("monthly");
   const [toast, setToast] = useState(null);
   const [confirmSave, setConfirmSave] = useState(false);
   const [pendingSave, setPendingSave] = useState(null);
+  const [showHistory, setShowHistory] = useState(false);
   const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
   const effectiveMonthly = allowanceType === "daily" ? allowance * 30 : allowanceType === "weekly" ? allowance * 4 : allowance;
@@ -1052,6 +1073,20 @@ function AllowanceTab({ allowance, setAllowance, allowanceType, setAllowanceType
   const totalSpent = activePeriodExpenses.reduce(function(s, e) { return s + e.amount; }, 0);
   const activeAllowance = activeAllowanceNow;
   const pieData = [{ name: "Spent", value: totalSpent }, { name: "Remaining", value: Math.max(0, activeAllowance - totalSpent) }];
+  const allowanceHistoryRows = useMemo(function() {
+    var bucket = (allowanceHistory && allowanceHistory[allowanceType]) || {};
+    var rows = Object.keys(bucket).map(function(key) {
+      var entry = bucket[key] || {};
+      var raw = entry.updatedAt || "";
+      var iso = "";
+      if (typeof raw === "string") iso = raw;
+      else if (raw && typeof raw.toDate === "function") iso = raw.toDate().toISOString();
+      else if (raw && typeof raw === "object" && typeof raw.seconds === "number") iso = new Date(raw.seconds * 1000).toISOString();
+      return { key: key, amount: Number(entry.amount || 0), updatedAt: iso };
+    });
+    rows.sort(function(a, b) { return new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0); });
+    return rows;
+  }, [allowanceHistory, allowanceType]);
 
   return (
     <div style={{ animation: "fadeUp 0.4s ease" }}>
@@ -1061,6 +1096,7 @@ function AllowanceTab({ allowance, setAllowance, allowanceType, setAllowanceType
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="allowance-type-head-row">
           <p className="card-title" style={{ margin: 0 }}>📅 Allowance Type</p>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <div className="allowance-staytype-toggle">
             {[{ key: "uwian", label: "🏠 Uwian" }, { key: "boarding", label: "🏢 Boarding" }].map(function(t) {
               const isActive = stayType === t.key;
@@ -1075,7 +1111,44 @@ function AllowanceTab({ allowance, setAllowance, allowanceType, setAllowanceType
               );
             })}
           </div>
+          <button
+            type="button"
+            onClick={function() { setShowHistory(function(v) { return !v; }); }}
+            title="Allowance history"
+            style={{ width: 34, height: 34, borderRadius: "50%", border: "1px solid #cbd5e1", background: showHistory ? "#e2e8f0" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M4.5 10a7.5 7.5 0 1 1 2.2 5.3" stroke="#334155" strokeWidth="1.9" strokeLinecap="round"/>
+              <path d="M4.5 10V6.8M4.5 10h3.2" stroke="#334155" strokeWidth="1.9" strokeLinecap="round"/>
+              <path d="M12 8.8v3.6l2.5 1.4" stroke="#334155" strokeWidth="1.9" strokeLinecap="round"/>
+            </svg>
+          </button>
+          </div>
         </div>
+        {showHistory && (
+          <div style={{ marginTop: 10, marginBottom: 12, border: "1px solid #e2e8f0", borderRadius: 12, padding: "10px 12px", background: "#f8fafc" }}>
+            <p style={{ fontSize: "0.78rem", fontWeight: 800, color: "#334155", marginBottom: 8 }}>
+              History ({allowanceType === "daily" ? "Daily" : allowanceType === "weekly" ? "Weekly" : "Monthly"})
+            </p>
+            {allowanceHistoryRows.length === 0 ? (
+              <p style={{ fontSize: "0.75rem", color: "#94a3b8" }}>No saved history yet.</p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 170, overflowY: "auto" }}>
+                {allowanceHistoryRows.map(function(row) {
+                  return (
+                    <div key={row.key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 9, padding: "7px 9px" }}>
+                      <div>
+                        <p style={{ fontSize: "0.75rem", fontWeight: 700, color: "#334155" }}>{row.key}</p>
+                        <p style={{ fontSize: "0.68rem", color: "#94a3b8" }}>{row.updatedAt ? new Date(row.updatedAt).toLocaleString() : "No timestamp"}</p>
+                      </div>
+                      <p style={{ fontSize: "0.82rem", fontWeight: 900, color: "#2563eb", fontFamily: "'JetBrains Mono',monospace" }}>₱{row.amount.toLocaleString()}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
         <p style={{ fontSize: "0.82rem", color: "#64748b", marginBottom: 12 }}>Choose how often you receive your allowance:</p>
         <div style={{ display: "flex", gap: 12 }}>
           {[
@@ -1384,6 +1457,7 @@ export default function App() {
   const [expenses, setExpenses] = useState([]);
   const [allUsersExpenses, setAllUsersExpenses] = useState([]);
   const [expenseSyncError, setExpenseSyncError] = useState(null);
+  const [allowanceHistory, setAllowanceHistory] = useState({ daily: {}, weekly: {}, monthly: {} });
 
   // ── Firebase Auth State Listener ─────────────────────────────
   useEffect(function() {
@@ -1439,9 +1513,11 @@ export default function App() {
           const historyForType = history[type] || {};
           const periodEntry = historyForType[periodKey] || null;
 
-          const currentAmount = periodEntry && typeof periodEntry.amount === "number"
+          const hasPeriodHistory = periodEntry && typeof periodEntry.amount === "number";
+          const hasAnyHistoryForType = Object.keys(historyForType).length > 0;
+          const currentAmount = hasPeriodHistory
             ? periodEntry.amount
-            : (typeof data.amount === "number" ? data.amount : 0);
+            : (hasAnyHistoryForType ? 0 : (typeof data.amount === "number" ? data.amount : 0));
 
           const rawUpdatedAt = periodEntry && periodEntry.updatedAt ? periodEntry.updatedAt : (data.updatedAt || "");
           var normalizedUpdatedAt = rawUpdatedAt;
@@ -1454,12 +1530,14 @@ export default function App() {
           setAllowance(currentAmount);
           setAllowanceType(type);
           setAllowanceUpdatedAt(normalizedUpdatedAt || "");
+          setAllowanceHistory({ daily: history.daily || {}, weekly: history.weekly || {}, monthly: history.monthly || {} });
           setSemester(data.semester || "firstsem");
           setStayType(normalizeStayType(data.stayType));
         } else {
           setAllowance(0);
           setAllowanceType("monthly");
           setAllowanceUpdatedAt("");
+          setAllowanceHistory({ daily: {}, weekly: {}, monthly: {} });
         }
       },
       function(err) { console.warn("Allowance:", err.message); }
@@ -1630,6 +1708,7 @@ export default function App() {
     setAllowance(0);
     setAllowanceType("monthly");
     setAllowanceUpdatedAt("");
+    setAllowanceHistory({ daily: {}, weekly: {}, monthly: {} });
   }
 
   // Show loading spinner while Firebase checks auth state
@@ -1668,7 +1747,7 @@ export default function App() {
           )}
           {tab === "home" && <HomeTab expenses={expenses} allowance={allowance} allowanceType={allowanceType} allowanceUpdatedAt={allowanceUpdatedAt} user={user} allUsersExpenses={allUsersExpenses} />}
           {tab === "expenses" && <ExpensesTab expenses={expenses} onAddExpense={handleAddExpense} onUpdateExpense={handleUpdateExpense} onDeleteExpense={handleDeleteExpense} />}
-          {tab === "allowance" && <AllowanceTab allowance={allowance} setAllowance={setAllowance} allowanceType={allowanceType} setAllowanceType={setAllowanceType} allowanceUpdatedAt={allowanceUpdatedAt} semester={semester} setSemester={setSemester} stayType={stayType} setStayType={setStayType} expenses={expenses} onSaveAllowance={handleSaveAllowance} />}
+          {tab === "allowance" && <AllowanceTab allowance={allowance} setAllowance={setAllowance} allowanceType={allowanceType} setAllowanceType={setAllowanceType} allowanceUpdatedAt={allowanceUpdatedAt} semester={semester} setSemester={setSemester} stayType={stayType} setStayType={setStayType} expenses={expenses} onSaveAllowance={handleSaveAllowance} allowanceHistory={allowanceHistory} />}
           {tab === "settings" && <SettingsTab user={user} setUser={setUser} onLogout={handleLogout} onUpdateProfile={handleUpdateProfile} />}
         </div>
         <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "#fff", borderTop: "1px solid #e2e8f0", display: "flex", justifyContent: "space-around", padding: "8px 0 12px", boxShadow: "0 -4px 20px rgba(0,0,0,0.08)" }}>
