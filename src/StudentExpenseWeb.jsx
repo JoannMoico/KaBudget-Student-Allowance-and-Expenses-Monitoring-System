@@ -83,9 +83,8 @@ function expenseInActiveAllowancePeriod(expense, allowanceType) {
   return true;
 }
 
-const TABS = ["home", "allowance", "expenses", "settings"];
-const TAB_ICONS = { home: "🏠", expenses: "💸", allowance: "💰", settings: "⚙️" };
-const TAB_LABELS = { home: "Home", expenses: "Expenses", allowance: "Allowance", settings: "Settings" };
+const TABS = ["home", "allowance", "expenses", "profile"];
+const TAB_LABELS = { home: "Home", expenses: "Expenses", allowance: "Allowance", profile: "Profile" };
 
 const MOCK_EXPENSES = [
   { id: 1, date: "2024-04-25", category: "Food", amount: 150, note: "Lunch" },
@@ -121,10 +120,11 @@ const GLOBAL_STYLES = `
   .app-input:focus { border-color:#4A90D9; background:#fff; }
   .btn-primary { padding:11px 20px; border:none; border-radius:11px; background:linear-gradient(135deg,#4A90D9,#2563eb); color:#fff; font-family:'Sora',sans-serif; font-weight:700; font-size:0.9rem; cursor:pointer; transition:all 0.2s; white-space:nowrap; }
   .btn-primary:hover { transform:translateY(-1px); box-shadow:0 6px 18px rgba(74,144,217,0.35); }
-  .nav-btn { display:flex; flex-direction:column; align-items:center; gap:3px; border:none; background:transparent; cursor:pointer; padding:10px 16px; border-radius:14px; transition:all 0.2s; font-family:'Sora',sans-serif; }
-  .nav-btn.active { background:linear-gradient(135deg,#e0f2fe,#bfdbfe); }
+  .nav-btn { display:flex; flex-direction:column; align-items:center; gap:3px; border:none; background:transparent; cursor:pointer; padding:10px 16px; border-radius:20px; transition:all 0.3s ease; font-family:'Sora',sans-serif; color:#a0aec0; }
+  .nav-btn.active { background:linear-gradient(135deg,#e0f2fe,#bfdbfe); color:#2563eb; }
+  .nav-btn:hover { opacity:0.8; }
   .nav-icon { font-size:20px; }
-  .nav-label { font-size:0.68rem; font-weight:700; color:#64748b; }
+  .nav-label { font-size:0.68rem; font-weight:700; }
   .nav-btn.active .nav-label { color:#2563eb; }
   .auth-input { width:100%; padding:13px 16px; border:2px solid rgba(255,255,255,0.1); border-radius:12px; background:rgba(255,255,255,0.06); color:#fff; font-family:'Sora',sans-serif; font-size:0.95rem; outline:none; transition:border 0.2s; }
   .auth-input:focus { border-color:#4A90D9; background:rgba(74,144,217,0.08); }
@@ -1391,7 +1391,7 @@ function Avatar({ user, size }) {
   );
 }
 
-function SettingsTab({ user, setUser, onLogout, onDeleteAccount, onUpdateProfile }) {
+function ProfileTab({ user, setUser, onLogout, onDeleteAccount, onUpdateProfile }) {
   const [form, setForm] = useState({ name: user.name || "", age: String(user.age || ""), department: user.department || "", password: "" });
   const [toast, setToast] = useState(null);
   const fileRef = useRef(null);
@@ -1456,7 +1456,7 @@ function SettingsTab({ user, setUser, onLogout, onDeleteAccount, onUpdateProfile
 
   return (
     <div style={{ animation: "fadeUp 0.4s ease" }}>
-      <h2 style={{ fontWeight: 800, color: "#0f172a", fontSize: "1.15rem", marginBottom: 18 }}>⚙️ Settings</h2>
+      <h2 style={{ fontWeight: 800, color: "#0f172a", fontSize: "1.15rem", marginBottom: 18 }}>👤 Profile</h2>
 
       {/* Profile Card */}
       <div className="card" style={{ marginBottom: 20, textAlign: "center" }}>
@@ -2003,14 +2003,22 @@ export default function App() {
           {tab === "home" && <HomeTab expenses={expenses} allowance={allowance} allowanceType={allowanceType} allowanceUpdatedAt={allowanceUpdatedAt} user={user} allUsersExpenses={allUsersExpenses} />}
           {tab === "expenses" && <ExpensesTab expenses={expenses} stayType={stayType} onAddExpense={handleAddExpense} onUpdateExpense={handleUpdateExpense} onDeleteExpense={handleDeleteExpense} />}
           {tab === "allowance" && <AllowanceTab allowance={allowance} setAllowance={setAllowance} allowanceType={allowanceType} setAllowanceType={setAllowanceType} allowanceUpdatedAt={allowanceUpdatedAt} semester={semester} setSemester={setSemester} stayType={stayType} setStayType={setStayType} expenses={expenses} onSaveAllowance={handleSaveAllowance} allowanceHistory={allowanceHistory} />}
-          {tab === "settings" && <SettingsTab user={user} setUser={setUser} onLogout={handleLogout} onDeleteAccount={handleDeleteAccount} onUpdateProfile={handleUpdateProfile} />}
+          {tab === "profile" && <ProfileTab user={user} setUser={setUser} onLogout={handleLogout} onDeleteAccount={handleDeleteAccount} onUpdateProfile={handleUpdateProfile} />}
         </div>
-        <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "#fff", borderTop: "1px solid #e2e8f0", display: "flex", justifyContent: "space-around", padding: "8px 0 12px", boxShadow: "0 -4px 20px rgba(0,0,0,0.08)" }}>
+        <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "#fff", borderTop: "1px solid #e2e8f0", display: "flex", justifyContent: "space-around", alignItems: "center", padding: "12px 16px 16px", boxShadow: "0 -4px 20px rgba(0,0,0,0.08)" }}>
           {TABS.map(function(t) {
+            const tabColors = { home: "#fecaca", expenses: "#e9d5ff", allowance: "#a5f3fc", profile: "#fbcfe8" };
+            const iconColors = { home: "#dc2626", expenses: "#a855f7", allowance: "#0891b2", profile: "#ec4899" };
+            const isActive = tab === t;
             return (
-              <button key={t} className={"nav-btn" + (tab === t ? " active" : "")} onClick={function() { setTab(t); }}>
-                <span className="nav-icon">{TAB_ICONS[t]}</span>
-                <span className="nav-label">{TAB_LABELS[t]}</span>
+              <button key={t} onClick={function() { setTab(t); }} style={{ display: "flex", alignItems: "center", gap: 8, border: "none", background: isActive ? tabColors[t] : "transparent", padding: "8px 14px", borderRadius: 20, cursor: "pointer", fontWeight: 700, fontSize: "0.9rem", fontFamily: "'Sora',sans-serif", transition: "all 0.2s", lineHeight: 1, color: isActive ? "#1f2937" : "#9ca3af" }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={isActive ? iconColors[t] : "currentColor"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                  {t === "home" && <><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></>}
+                  {t === "expenses" && <><path d="M19 8H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-10a2 2 0 0 0-2-2z"/><circle cx="16" cy="9" r="2.5"/></>}
+                  {t === "allowance" && <><path d="M5 11a2 2 0 0 0-1 1.73V18a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5.27a2 2 0 0 0-1-1.73"/><path d="M7 8l2-2h6l2 2"/><circle cx="12" cy="14" r="2"/><circle cx="7" cy="12" r="0.5"/><circle cx="17" cy="12" r="0.5"/></>}
+                  {t === "profile" && <><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></>}
+                </svg>
+                {isActive && <span>{TAB_LABELS[t]}</span>}
               </button>
             );
           })}
