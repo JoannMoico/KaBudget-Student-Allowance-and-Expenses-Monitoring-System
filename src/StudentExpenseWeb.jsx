@@ -11,7 +11,9 @@ import {
   signOut,
   deleteUser,
   onAuthStateChanged,
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
+  EmailAuthProvider,
+  reauthenticateWithCredential
 } from "firebase/auth";
 import {
   doc, setDoc, getDoc, collection, getDocs,
@@ -203,7 +205,7 @@ function Toast({ msg, type, onDone }) {
   );
 }
 
-function ConfirmModal({ show, title, message, onYes, onNo, yesLabel="Yes", noLabel="No", yesColor="#e74c3c" }) {
+function ConfirmModal({ show, title, message, children, onYes, onNo, yesLabel="Yes", noLabel="No", yesColor="#e74c3c" }) {
   if (!show) return null;
   // Portal → body so fixed overlay isn’t clipped by mobile .auth-page-root { overflow-y: auto }
   return createPortal(
@@ -211,6 +213,7 @@ function ConfirmModal({ show, title, message, onYes, onNo, yesLabel="Yes", noLab
       <div style={{ background:"#fff", borderRadius:20, padding:28, maxWidth:320, width:"100%", boxShadow:"0 8px 40px rgba(0,0,0,0.2)", animation:"fadeUp 0.25s ease" }}>
         <p style={{ fontWeight:800, fontSize:"1rem", color:"#0f172a", marginBottom:8 }}>{title}</p>
         <p style={{ fontSize:"0.88rem", color:"#64748b", marginBottom:22, lineHeight:1.5 }}>{message}</p>
+        {children}
         <div style={{ display:"flex", gap:10 }}>
           <button type="button" onClick={onNo} style={{ flex:1, padding:"11px", border:"2px solid #e2e8f0", borderRadius:12, background:"#f8fafc", fontFamily:"'Sora',sans-serif", fontWeight:700, fontSize:"0.9rem", cursor:"pointer", color:"#334155" }}>{noLabel}</button>
           <button type="button" onClick={onYes} style={{ flex:1, padding:"11px", border:"none", borderRadius:12, background:yesColor, color:"#fff", fontFamily:"'Sora',sans-serif", fontWeight:700, fontSize:"0.9rem", cursor:"pointer" }}>{yesLabel}</button>
@@ -1499,6 +1502,7 @@ function ProfileTab({ user, setUser, onLogout, onDeleteAccount, onUpdateProfile 
   const fileRef = useRef(null);
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [confirmDeleteAccount, setConfirmDeleteAccount] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
   const [confirmSave, setConfirmSave] = useState(false);
   const [confirmRemovePhoto, setConfirmRemovePhoto] = useState(false);
 
@@ -1626,7 +1630,7 @@ function ProfileTab({ user, setUser, onLogout, onDeleteAccount, onUpdateProfile 
         <button onClick={function() { setConfirmLogout(true); }} style={{ width: "100%", padding: "13px", border: "2px solid #e74c3c", borderRadius: 12, background: "transparent", color: "#e74c3c", fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: "0.95rem", cursor: "pointer", marginBottom: 10 }}>
           🚪 Log Out
         </button>
-        <button onClick={function() { setConfirmDeleteAccount(true); }} style={{ width: "100%", padding: "13px", border: "2px solid #b91c1c", borderRadius: 12, background: "#fee2e2", color: "#b91c1c", fontFamily: "'Sora',sans-serif", fontWeight: 800, fontSize: "0.95rem", cursor: "pointer" }}>
+        <button onClick={function() { setDeletePassword(""); setConfirmDeleteAccount(true); }} style={{ width: "100%", padding: "13px", border: "2px solid #b91c1c", borderRadius: 12, background: "#fee2e2", color: "#b91c1c", fontFamily: "'Sora',sans-serif", fontWeight: 800, fontSize: "0.95rem", cursor: "pointer" }}>
           🗑️ Delete Account
         </button>
       </div>
@@ -1637,19 +1641,38 @@ function ProfileTab({ user, setUser, onLogout, onDeleteAccount, onUpdateProfile 
       <ConfirmModal show={confirmDeleteAccount} title="Delete Account?" message="Are you sure you want to permanently delete your account and all your data? This cannot be undone."
         yesLabel="Yes, Delete Account" noLabel="Cancel" yesColor="#b91c1c"
         onYes={async function() {
-          try { await onDeleteAccount(); }
-          catch (e) {
+          if (!deletePassword) { setToast({ msg: "Please enter your password to confirm deletion.", type: "error" }); return; }
+          try {
+            await onDeleteAccount(deletePassword);
+            setConfirmDeleteAccount(false);
+          } catch (e) {
             var code = (e && (e.code || e.errorCode)) ? String(e.code || e.errorCode) : "";
             var msg = e && e.message ? String(e.message) : "";
             if (code === "auth/requires-recent-login" || /requires-recent-login/i.test(msg)) {
-              setToast({ msg: "For security, please log out, log in again, then try deleting your account.", type: "error" });
+              setToast({ msg: "Re-enter your password and try again.", type: "error" });
+            } else if (code === "auth/wrong-password" || /wrong-password/i.test(msg)) {
+              setToast({ msg: "Incorrect password. Please try again.", type: "error" });
             } else {
               setToast({ msg: "Error: " + (msg || "Could not delete account."), type: "error" });
             }
           }
-          finally { setConfirmDeleteAccount(false); }
         }}
-        onNo={function() { setConfirmDeleteAccount(false); }} />
+        onNo={function() { setConfirmDeleteAccount(false); }}>
+        <div style={{ marginTop: -6, marginBottom: 8 }}>
+          <label className="field-label" style={{ color: "#64748b", marginBottom: 6 }}>Confirm Password</label>
+          <input
+            className="app-input"
+            type="password"
+            value={deletePassword}
+            onChange={function(e) { setDeletePassword(e.target.value); }}
+            placeholder="Enter your password"
+            autoFocus
+          />
+          <p style={{ fontSize: "0.72rem", color: "#94a3b8", marginTop: 8, lineHeight: 1.4 }}>
+            For security, you need to re-enter your password to delete your account.
+          </p>
+        </div>
+      </ConfirmModal>
       <ConfirmModal show={confirmSave} title="Update Profile?" message="Do you want to save your profile changes?"
         yesLabel="Yes, Save" noLabel="Cancel" yesColor="#4A90D9"
         onYes={async function() {
@@ -1724,6 +1747,27 @@ export default function App() {
   useEffect(function() {
     localStorage.setItem("currentTab", tab);
   }, [tab]);
+
+  // ── Ensure department index docs exist (CLA + HSD) ──────────
+  // Some users may already exist in Firestore without CLA/HSD index docs.
+  // This creates missing department documents under both users/ and allowances/.
+  useEffect(function() {
+    if (!user || !user.uid) return;
+    var deptsToEnsure = ["CCS","CE","CCJE","CN","CBAA","CLA","HSD"];
+    var deptNameMap = { HSD: "High School Department", CLA: "CLA" };
+    async function ensureDeptIndex() {
+      // users/departments/departments (doc "departments") -> Departments (subcollection) -> {DEPT} (doc)
+      await setDoc(doc(db, "users", "departments"), {}, { merge: true }).catch(function() {});
+      await setDoc(doc(db, "allowances", "departments"), {}, { merge: true }).catch(function() {});
+      for (var i = 0; i < deptsToEnsure.length; i++) {
+        var d = deptsToEnsure[i];
+        var nameVal = deptNameMap[d] || d;
+        await setDoc(doc(db, "users", "departments", "Departments", d), { name: nameVal }, { merge: true }).catch(function() {});
+        await setDoc(doc(db, "allowances", "departments", "Departments", d), { name: nameVal }, { merge: true }).catch(function() {});
+      }
+    }
+    ensureDeptIndex().catch(function() {});
+  }, [user ? user.uid : null]);
 
   // ── Load Allowance + Expenses from Firestore (real-time) ────
   useEffect(function() {
@@ -1942,6 +1986,16 @@ export default function App() {
     try {
       const added = await addDoc(collection(db, "expenses", user.uid, "records"), expenseDoc);
       console.log("Expense added with ID:", added.id);
+
+      // Mirror for browsing by department + category:
+      // expenses/departments/Departments/{DEPT}/users/{uid}/{category}/{expenseId}
+      const mirrorDept = dept;
+      const mirrorCategory = expenseDoc.category;
+      await setDoc(
+        doc(db, "expenses", "departments", "Departments", mirrorDept, "users", user.uid, mirrorCategory, added.id),
+        { ...expenseDoc, id: added.id },
+        { merge: true }
+      ).catch(function(e) { console.warn("Mirror expense write failed:", e && e.message ? e.message : e); });
     } catch(e) {
       console.error("Add expense error:", e.code, e.message);
       throw e;
@@ -1971,8 +2025,34 @@ export default function App() {
     };
     console.log("Updating expense at path: expenses/" + user.uid + "/records/" + id, expenseUpdate);
     try {
+      // Read previous values so we can move the mirrored doc if category/department changes.
+      var prevDept = dept;
+      var prevCategory = expenseUpdate.category;
+      try {
+        var prevSnap = await getDoc(doc(db, "expenses", user.uid, "records", id));
+        if (prevSnap.exists()) {
+          var prevData = prevSnap.data();
+          if (prevData && prevData.department) prevDept = prevData.department;
+          if (prevData && prevData.category) prevCategory = prevData.category;
+        }
+      } catch (e2) {}
+
       await updateDoc(doc(db, "expenses", user.uid, "records", id), expenseUpdate);
       console.log("Expense updated");
+
+      // Mirror for browsing by department + category:
+      // If category/department changed, remove the old mirrored doc.
+      if (prevDept !== dept || prevCategory !== expenseUpdate.category) {
+        await deleteDoc(
+          doc(db, "expenses", "departments", "Departments", prevDept, "users", user.uid, prevCategory, id)
+        ).catch(function(e) { console.warn("Mirror expense delete failed:", e && e.message ? e.message : e); });
+      }
+
+      await setDoc(
+        doc(db, "expenses", "departments", "Departments", dept, "users", user.uid, expenseUpdate.category, id),
+        { ...expenseUpdate, id: id },
+        { merge: true }
+      ).catch(function(e) { console.warn("Mirror expense write failed:", e && e.message ? e.message : e); });
     } catch(e) {
       console.error("Update expense error:", e.code, e.message);
       throw e;
@@ -1987,8 +2067,26 @@ export default function App() {
     }
     console.log("Deleting expense at path: expenses/" + user.uid + "/records/" + id);
     try {
+      // Read previous values so we can delete the mirrored doc too.
+      var prevDept = user.department || "Other";
+      var prevCategory = null;
+      try {
+        var prevSnap = await getDoc(doc(db, "expenses", user.uid, "records", id));
+        if (prevSnap.exists()) {
+          var prevData = prevSnap.data();
+          if (prevData && prevData.department) prevDept = prevData.department;
+          if (prevData && prevData.category) prevCategory = prevData.category;
+        }
+      } catch (e2) {}
+
       await deleteDoc(doc(db, "expenses", user.uid, "records", id));
       console.log("Expense deleted");
+
+      if (prevCategory) {
+        await deleteDoc(
+          doc(db, "expenses", "departments", "Departments", prevDept, "users", user.uid, prevCategory, id)
+        ).catch(function(e) { console.warn("Mirror expense delete failed:", e && e.message ? e.message : e); });
+      }
     } catch(e) {
       console.error("Delete expense error:", e.code, e.message);
       throw e;
@@ -2045,14 +2143,33 @@ export default function App() {
     setAllowanceHistory({ daily: {}, weekly: {}, monthly: {} });
   }
 
-  async function handleDeleteAccount() {
+  async function handleDeleteAccount(password) {
     if (!user || !auth.currentUser) return;
+    const currentUser = auth.currentUser;
     const uid = user.uid;
     const dept = user.department || "";
 
+    // Firebase requires a "recent login" for deleting accounts.
+    // Re-authenticate using the password the user re-enters in the UI.
+    if (!password) throw new Error("Password required");
+    const email = currentUser.email || (user && user.email) || "";
+    if (!email) throw new Error("Missing user email for reauthentication");
+    await reauthenticateWithCredential(
+      currentUser,
+      EmailAuthProvider.credential(email, password)
+    );
+
     const expenseSnap = await getDocs(collection(db, "expenses", uid, "records"));
     await Promise.all(expenseSnap.docs.map(function(d) {
-      return deleteDoc(doc(db, "expenses", uid, "records", d.id));
+      var exp = d && typeof d.data === "function" ? d.data() : {};
+      var expDept = exp && exp.department ? exp.department : dept;
+      var expCategory = exp && exp.category ? exp.category : null;
+      return Promise.all([
+        deleteDoc(doc(db, "expenses", uid, "records", d.id)).catch(function() {}),
+        (expCategory
+          ? deleteDoc(doc(db, "expenses", "departments", "Departments", expDept, "users", uid, expCategory, d.id)).catch(function() {})
+          : Promise.resolve())
+      ]);
     }));
 
     await Promise.all([
