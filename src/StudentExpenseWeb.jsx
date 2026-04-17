@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, LineChart, Line, LabelList
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, LineChart, Line, LabelList, Area
 } from "recharts";
 import { auth, db, storage } from "./firebase";
 import {
@@ -244,7 +244,7 @@ function WelcomePage({ onGetStarted }) {
           {/* Credit card in center */}
           <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: isMobile ? 120 : 140, height: isMobile ? 72 : 85, background: "linear-gradient(135deg, #0066cc 0%, #0052a3 100%)", borderRadius: 10, padding: isMobile ? 10 : 12, color: "#fff", display: "flex", flexDirection: "column", justifyContent: "space-between", boxShadow: "0 12px 24px rgba(0,0,0,0.3)", zIndex: 10, fontSize: isMobile ? "0.65rem" : undefined }}>
             <div style={{ fontSize: isMobile ? "0.65rem" : "0.7rem", fontWeight: 600, letterSpacing: "0.05em" }}>KABUDGET</div>
-            <div style={{ fontSize: isMobile ? "0.6rem" : "0.65rem", fontFamily: "'JetBrains Mono', monospace" }}>•••• •••• •••• 2024</div>
+            <div style={{ fontSize: isMobile ? "0.6rem" : "0.65rem", fontFamily: "'JetBrains Mono', monospace" }}>•••• •••• •••• 2026</div>
           </div>
           
           {/* Coins scatter */}
@@ -310,6 +310,13 @@ function AuthPage({ onLogin }) {
   useEffect(function() { const t = setTimeout(function() { setMounted(true); }, 60); return function() { clearTimeout(t); }; }, []);
 
   const [fpLoading, setFpLoading] = useState(false);
+  useEffect(function() {
+    const deletedMsg = localStorage.getItem("accountDeletedMsg");
+    if (deletedMsg) {
+      setToast({ msg: deletedMsg, type: "success" });
+      localStorage.removeItem("accountDeletedMsg");
+    }
+  }, []);
 
   // ── Forgot Password via Firebase ──────────────────────────────
   async function handleForgotSendEmail() {
@@ -491,7 +498,7 @@ function AuthPage({ onLogin }) {
                 <option value="CCJE">CCJE – College of Criminal Justice Education</option>
                 <option value="CN">CN – College of Nursing</option>
                 <option value="CBAA">CBAA – College of Business Administration and Accountancy</option>
-                <option value="CLA">CLA – Colleges of Liberal Arts</option>
+                <option value="CLA">CLA - College of Liberal Arts</option>
                 <option value="HSD">High School Department</option>
               </select>
             </>)}
@@ -592,7 +599,7 @@ function AuthPage({ onLogin }) {
 const DEPARTMENTS = ["CCS","CE","CCJE","CN","CBAA","CLA","HSD"];
 const DEPT_COLORS = ["#1a6b3c","#2563eb","#7b1c1c","#e67e22","#f5c518","#7c3aed","#e74c3c"];
 
-function HomeTab({ expenses, allowance, allowanceType, allowanceUpdatedAt, user, allUsersExpenses }) {
+function HomeTab({ expenses, allowance, allowanceType, allowanceUpdatedAt, user, allUsersExpenses, semester, stayType }) {
   // Compute effective allowance based on type
   const allowanceIsActive = isAllowanceActiveForType(allowanceType, allowanceUpdatedAt);
   const activeExpenses = expenses.filter(function(e) { return expenseInActiveAllowancePeriod(e, allowanceType); });
@@ -618,10 +625,20 @@ function HomeTab({ expenses, allowance, allowanceType, allowanceUpdatedAt, user,
     return function() { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
   }, [pct]);
 
-  const [deptPeriod, setDeptPeriod] = useState("firstsem");
-  const [deptStayType, setDeptStayType] = useState("uwian");
+  const [deptPeriod, setDeptPeriod] = useState(semester === "secondsem" ? "secondsem" : "firstsem");
+  const [deptStayType, setDeptStayType] = useState(normalizeStayType(stayType));
   const [deptChartNarrow, setDeptChartNarrow] = useState(typeof window !== "undefined" ? window.innerWidth < 520 : false);
   const nowYear = new Date().getFullYear();
+
+  useEffect(function() {
+    if (semester === "firstsem" || semester === "secondsem") {
+      setDeptPeriod(semester);
+    }
+  }, [semester]);
+
+  useEffect(function() {
+    setDeptStayType(normalizeStayType(stayType));
+  }, [stayType]);
 
   useEffect(function() {
     function onResize() {
@@ -743,17 +760,6 @@ function HomeTab({ expenses, allowance, allowanceType, allowanceUpdatedAt, user,
     }
   }
 
-  var allowanceUpdatedLabel = "";
-  if (allowanceUpdatedAt) {
-    try {
-      var upd = new Date(allowanceUpdatedAt);
-      if (!isNaN(upd.getTime())) {
-        var todayStr = new Date().toDateString();
-        allowanceUpdatedLabel = upd.toDateString() === todayStr ? "Updated today" : "Updated " + upd.toLocaleDateString();
-      }
-    } catch (e) { /* ignore */ }
-  }
-
   return (
     <div style={{ animation: "fadeUp 0.4s ease" }}>
       {isOver && (
@@ -771,9 +777,6 @@ function HomeTab({ expenses, allowance, allowanceType, allowanceUpdatedAt, user,
           <p style={{ color: "#fff", fontSize: "1.75rem", fontWeight: 800, fontFamily: "'JetBrains Mono',monospace", letterSpacing: "-0.02em" }}>
             <AnimatedNumber value={effectiveAllowance} />
           </p>
-          {allowanceUpdatedLabel ? (
-            <p style={{ color: "rgba(255,255,255,0.75)", fontSize: "0.72rem", fontWeight: 600, marginTop: 12, marginBottom: 0 }}>{allowanceUpdatedLabel}</p>
-          ) : null}
         </div>
         <div className="home-summary-secondary">
           <div style={{ background: "#fff", borderRadius: 18, padding: "18px 16px", boxShadow: "0 2px 16px rgba(0,0,0,0.06)", border: "1px solid #f1f5f9" }}>
@@ -961,7 +964,7 @@ function ExpensesTab({ expenses, stayType, onAddExpense, onUpdateExpense, onDele
   }
   const [form, setForm] = useState({ date: localDateYYYYMMDD(new Date()), category: "Food", amount: "", note: "" });
   const [editId, setEditId] = useState(null);
-  const [period, setPeriod] = useState("monthly");
+  const [period, setPeriod] = useState("daily");
   const [toast, setToast] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null); // expense id to delete
@@ -1047,9 +1050,13 @@ function ExpensesTab({ expenses, stayType, onAddExpense, onUpdateExpense, onDele
     <div style={{ animation: "fadeUp 0.4s ease" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
         <h2 style={{ fontWeight: 800, color: "#0f172a", fontSize: "1.15rem", display: "flex", alignItems: "center", gap: 8 }}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-            <path d="M19 8H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-10a2 2 0 0 0-2-2z"/>
-            <circle cx="16" cy="9" r="2.5"/>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <rect x="3" y="11" width="18" height="9" rx="1.2" />
+            <path d="M6 11l8-4.8 1.8 3.1" />
+            <path d="M9 11l8-4.2 1.6 2.8" />
+            <circle cx="12" cy="15.5" r="2.1" />
+            <circle cx="6.5" cy="15.5" r="0.8" />
+            <circle cx="17.5" cy="15.5" r="0.8" />
           </svg>
           Expenses
         </h2>
@@ -1167,7 +1174,7 @@ function ExpensesTab({ expenses, stayType, onAddExpense, onUpdateExpense, onDele
 function AllowanceTab({ allowance, setAllowance, allowanceType, setAllowanceType, allowanceUpdatedAt, semester, setSemester, stayType, setStayType, expenses, onSaveAllowance, allowanceHistory }) {
   const [input, setInput] = useState(String(allowance || 0));
   useEffect(function() { setInput(String(allowance || 0)); }, [allowance]);
-  const [period, setPeriod] = useState("monthly");
+  const [period, setPeriod] = useState("daily");
   const [toast, setToast] = useState(null);
   const [confirmSave, setConfirmSave] = useState(false);
   const [pendingSave, setPendingSave] = useState(null);
@@ -1270,14 +1277,10 @@ function AllowanceTab({ allowance, setAllowance, allowanceType, setAllowanceType
   return (
     <div style={{ animation: "fadeUp 0.4s ease" }}>
       <h2 style={{ fontWeight: 800, color: "#0f172a", fontSize: "1.15rem", marginBottom: 18, display: "flex", alignItems: "center", gap: 8 }}>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-          <path d="M6 8.7l6.2-3.5 4.2 7.2"/>
-          <path d="M8.5 10l6-3.4 3.4 5.8"/>
-          <rect x="3" y="9.5" width="18" height="10.5" rx="1.8"/>
-          <path d="M3.7 13h16.6"/>
-          <circle cx="12" cy="15.2" r="1.9"/>
-          <circle cx="7.1" cy="15.2" r="0.45" fill="#000" stroke="none"/>
-          <circle cx="16.9" cy="15.2" r="0.45" fill="#000" stroke="none"/>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+          <path d="M3 8.5h18a2 2 0 0 1 2 2V19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2v-8.5a2 2 0 0 1 2-2z" />
+          <path d="M4.5 6h13.8" />
+          <path d="M19 12h3.2a1.2 1.2 0 0 1 1.2 1.2v2.6a1.2 1.2 0 0 1-1.2 1.2H19" />
         </svg>
         Allowance
       </h2>
@@ -1435,16 +1438,57 @@ function AllowanceTab({ allowance, setAllowance, allowanceType, setAllowanceType
           </ResponsiveContainer>
         </div>
         <div className="card">
-          <p className="card-title">📈 Trend Line</p>
-          <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis dataKey={xKey} tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 10 }} />
-              <Tooltip formatter={function(v) { return "₱" + v; }} /><Legend />
-              <Line type="monotone" dataKey="allowance" stroke="#4A90D9" strokeWidth={2} dot={false} name="Allowance" />
-              <Line type="monotone" dataKey="expenses" stroke="#FF6B35" strokeWidth={2} dot={false} name="Expenses" />
+          <p className="card-title">📈 Line Chart</p>
+          <ResponsiveContainer width="100%" height={210}>
+            <LineChart data={chartData} margin={{ top: 10, right: 8, left: 2, bottom: 2 }}>
+              <defs>
+                <linearGradient id="allowanceFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#60a5fa" stopOpacity={0.22} />
+                  <stop offset="100%" stopColor="#60a5fa" stopOpacity={0.02} />
+                </linearGradient>
+                <linearGradient id="expensesFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#facc15" stopOpacity={0.22} />
+                  <stop offset="100%" stopColor="#facc15" stopOpacity={0.02} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 4" stroke="#e2e8f0" strokeOpacity={0.9} />
+              <XAxis dataKey={xKey} tick={{ fontSize: 10, fill: "#64748b" }} axisLine={{ stroke: "#cbd5e1" }} tickLine={{ stroke: "#cbd5e1" }} />
+              <YAxis tick={{ fontSize: 10, fill: "#64748b" }} axisLine={{ stroke: "#cbd5e1" }} tickLine={{ stroke: "#cbd5e1" }} tickFormatter={function(v) { return "₱" + Number(v || 0).toLocaleString(); }} />
+              <Tooltip
+                formatter={function(v) { return "₱" + Number(v || 0).toLocaleString(); }}
+                contentStyle={{ borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 8px 24px rgba(15,23,42,0.12)" }}
+                labelStyle={{ color: "#334155", fontWeight: 700 }}
+              />
+              <Area type="monotone" dataKey="allowance" fill="url(#allowanceFill)" stroke="none" />
+              <Area type="monotone" dataKey="expenses" fill="url(#expensesFill)" stroke="none" />
+              <Line
+                type="monotone"
+                dataKey="allowance"
+                stroke="#60a5fa"
+                strokeWidth={2.6}
+                dot={{ r: 2.8, strokeWidth: 1.8, fill: "#ffffff", stroke: "#60a5fa" }}
+                activeDot={{ r: 4.8, strokeWidth: 2, fill: "#60a5fa", stroke: "#ffffff" }}
+              />
+              <Line
+                type="monotone"
+                dataKey="expenses"
+                stroke="#facc15"
+                strokeWidth={2.6}
+                dot={{ r: 2.8, strokeWidth: 1.8, fill: "#ffffff", stroke: "#facc15" }}
+                activeDot={{ r: 4.8, strokeWidth: 2, fill: "#facc15", stroke: "#ffffff" }}
+              />
             </LineChart>
           </ResponsiveContainer>
+          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 16, marginTop: 4 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#60a5fa", display: "inline-block" }} />
+              <span style={{ fontSize: "0.76rem", fontWeight: 700, color: "#60a5fa" }}>Allowance</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#facc15", display: "inline-block" }} />
+              <span style={{ fontSize: "0.76rem", fontWeight: 700, color: "#facc15" }}>Expenses</span>
+            </div>
+          </div>
         </div>
         <div className="card">
           <p className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1614,7 +1658,7 @@ function ProfileTab({ user, setUser, onLogout, onDeleteAccount, onUpdateProfile 
               <option value="CCJE">CCJE – College of Criminal Justice Education</option>
               <option value="CN">CN – College of Nursing</option>
               <option value="CBAA">CBAA – College of Business Administration and Accountancy</option>
-              <option value="CLA">CLA – Colleges of Liberal Arts</option>
+              <option value="CLA">CLA - College of Liberal Arts</option>
               <option value="HSD">High School Department</option>
             </select>
           </div>
@@ -1698,8 +1742,13 @@ export default function App() {
   const [allowance, setAllowance] = useState(0);
   const [allowanceType, setAllowanceType] = useState("monthly");
   const [allowanceUpdatedAt, setAllowanceUpdatedAt] = useState("");
-  const [semester, setSemester] = useState("firstsem");
-  const [stayType, setStayType] = useState("uwian");
+  const [semester, setSemester] = useState(function() {
+    const savedSemester = localStorage.getItem("selectedSemester");
+    return savedSemester === "secondsem" ? "secondsem" : "firstsem";
+  });
+  const [stayType, setStayType] = useState(function() {
+    return normalizeStayType(localStorage.getItem("selectedStayType"));
+  });
   const [expenses, setExpenses] = useState([]);
   const [allUsersExpenses, setAllUsersExpenses] = useState([]);
   const [expenseSyncError, setExpenseSyncError] = useState(null);
@@ -1709,6 +1758,14 @@ export default function App() {
   useEffect(function() {
     localStorage.setItem("currentTab", tab);
   }, [tab]);
+
+  useEffect(function() {
+    localStorage.setItem("selectedSemester", semester);
+  }, [semester]);
+
+  useEffect(function() {
+    localStorage.setItem("selectedStayType", normalizeStayType(stayType));
+  }, [stayType]);
 
   // ── Firebase Auth State Listener ─────────────────────────────
   useEffect(function() {
@@ -1812,6 +1869,8 @@ export default function App() {
           setAllowanceHistory({ daily: history.daily || {}, weekly: history.weekly || {}, monthly: history.monthly || {} });
           setSemester(data.semester || "firstsem");
           setStayType(normalizeStayType(data.stayType));
+          localStorage.setItem("selectedSemester", data.semester || "firstsem");
+          localStorage.setItem("selectedStayType", normalizeStayType(data.stayType));
         } else {
           setAllowance(0);
           setAllowanceType("monthly");
@@ -2180,6 +2239,7 @@ export default function App() {
     ]);
 
     await deleteUser(auth.currentUser);
+    localStorage.setItem("accountDeletedMsg", "Successfully Deleted");
     setUser(null);
     setHasSeenWelcome(false);
     localStorage.removeItem("hasSeenWelcome");
@@ -2229,32 +2289,59 @@ export default function App() {
               )}
             </div>
           )}
-          {tab === "home" && <HomeTab expenses={expenses} allowance={allowance} allowanceType={allowanceType} allowanceUpdatedAt={allowanceUpdatedAt} user={user} allUsersExpenses={allUsersExpenses} />}
+          {tab === "home" && <HomeTab expenses={expenses} allowance={allowance} allowanceType={allowanceType} allowanceUpdatedAt={allowanceUpdatedAt} user={user} allUsersExpenses={allUsersExpenses} semester={semester} stayType={stayType} />}
           {tab === "expenses" && <ExpensesTab expenses={expenses} stayType={stayType} onAddExpense={handleAddExpense} onUpdateExpense={handleUpdateExpense} onDeleteExpense={handleDeleteExpense} />}
           {tab === "allowance" && <AllowanceTab allowance={allowance} setAllowance={setAllowance} allowanceType={allowanceType} setAllowanceType={setAllowanceType} allowanceUpdatedAt={allowanceUpdatedAt} semester={semester} setSemester={setSemester} stayType={stayType} setStayType={setStayType} expenses={expenses} onSaveAllowance={handleSaveAllowance} allowanceHistory={allowanceHistory} />}
           {tab === "profile" && <ProfileTab user={user} setUser={setUser} onLogout={handleLogout} onDeleteAccount={handleDeleteAccount} onUpdateProfile={handleUpdateProfile} />}
         </div>
-        <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "#fff", borderTop: "1px solid #e2e8f0", display: "flex", justifyContent: "space-around", alignItems: "center", padding: "12px 16px 16px", boxShadow: "0 -4px 20px rgba(0,0,0,0.08)" }}>
+        <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "#fff", borderTop: "1px solid #e2e8f0", display: "flex", justifyContent: "space-around", alignItems: "center", padding: "10px 14px 12px", boxShadow: "0 -4px 20px rgba(0,0,0,0.08)" }}>
           {TABS.map(function(t) {
-            const tabColors = { home: "#fecaca", expenses: "#e9d5ff", allowance: "#a5f3fc", profile: "#fbcfe8" };
             const isActive = tab === t;
             return (
-              <button key={t} onClick={function() { setTab(t); }} style={{ display: "flex", alignItems: "center", gap: 8, border: "none", background: isActive ? tabColors[t] : "transparent", padding: "8px 14px", borderRadius: 20, cursor: "pointer", fontWeight: 700, fontSize: "0.9rem", fontFamily: "'Sora',sans-serif", transition: "all 0.2s", lineHeight: 1, color: isActive ? "#1f2937" : "#9ca3af" }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                  {t === "home" && <><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></>}
-                  {t === "expenses" && <><path d="M19 8H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-10a2 2 0 0 0-2-2z"/><circle cx="16" cy="9" r="2.5"/></>}
-                  {t === "allowance" && <>
-                    <path d="M6 8.7l6.2-3.5 4.2 7.2"/>
-                    <path d="M8.5 10l6-3.4 3.4 5.8"/>
-                    <rect x="3" y="9.5" width="18" height="10.5" rx="1.8"/>
-                    <path d="M3.7 13h16.6"/>
-                    <circle cx="12" cy="15.2" r="1.9"/>
-                    <circle cx="7.1" cy="15.2" r="0.45" fill="#000" stroke="none"/>
-                    <circle cx="16.9" cy="15.2" r="0.45" fill="#000" stroke="none"/>
-                  </>}
-                  {t === "profile" && <><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></>}
-                </svg>
-                {isActive && <span>{TAB_LABELS[t]}</span>}
+              <button
+                key={t}
+                onClick={function() { setTab(t); }}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 4,
+                  border: "none",
+                  background: "transparent",
+                  padding: "6px 12px",
+                  minWidth: 64,
+                  borderRadius: 12,
+                  cursor: "pointer",
+                  fontWeight: 700,
+                  fontSize: "0.82rem",
+                  fontFamily: "'Sora',sans-serif",
+                  transition: "all 0.2s",
+                  lineHeight: 1,
+                  color: isActive ? "#60a5fa" : "#000"
+                }}
+              >
+                <div style={{ width: 46, height: 38, borderRadius: 19, display: "flex", alignItems: "center", justifyContent: "center", background: isActive ? "#dbeafe" : "transparent" }}>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={isActive ? "#60a5fa" : "#000"} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                    {t === "home" && <><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></>}
+                    {t === "expenses" && <g transform="translate(-1 -1) scale(1.1)">
+                      <rect x="3" y="11" width="18" height="9" rx="1.2" />
+                      <path d="M6 11l8-4.8 1.8 3.1" />
+                      <path d="M9 11l8-4.2 1.6 2.8" />
+                      <circle cx="12" cy="15.5" r="2.1" />
+                      <circle cx="6.5" cy="15.5" r="0.8" />
+                      <circle cx="17.5" cy="15.5" r="0.8" />
+                    </g>}
+                    {t === "allowance" && <>
+                      <path d="M3 8.5h18a2 2 0 0 1 2 2V19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2v-8.5a2 2 0 0 1 2-2z" />
+                      <path d="M4.5 6h13.8" />
+                      <path d="M19 12h3.2a1.2 1.2 0 0 1 1.2 1.2v2.6a1.2 1.2 0 0 1-1.2 1.2H19" />
+                    </>}
+                    {t === "profile" && <><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></>}
+                  </svg>
+                </div>
+                <span style={{ color: isActive ? "#60a5fa" : "#000", fontWeight: 800 }}>{TAB_LABELS[t]}</span>
+                <div style={{ width: 42, height: 3, borderRadius: 3, background: isActive ? "#60a5fa" : "transparent", marginTop: 2 }} />
               </button>
             );
           })}
