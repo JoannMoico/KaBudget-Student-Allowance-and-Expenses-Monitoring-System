@@ -86,6 +86,33 @@ function expenseInActiveAllowancePeriod(expense, allowanceType) {
   return true;
 }
 
+/** Previous calendar period for comparison: yesterday / prior week / prior month (local dates). */
+function expenseInPreviousAllowancePeriod(expense, allowanceType) {
+  var expenseDateStr = expenseCalendarDateStr(expense);
+  if (!expenseDateStr) return false;
+  var expDate = new Date(expenseDateStr + "T00:00:00");
+  if (isNaN(expDate.getTime())) return false;
+  var now = new Date();
+  if (allowanceType === "daily") {
+    var y = new Date(now);
+    y.setDate(y.getDate() - 1);
+    return localDateYYYYMMDD(expDate) === localDateYYYYMMDD(y);
+  }
+  if (allowanceType === "weekly") {
+    var thisWeekStart = startOfWeek(now);
+    var prevWeekStart = new Date(thisWeekStart);
+    prevWeekStart.setDate(prevWeekStart.getDate() - 7);
+    var prevWeekEnd = new Date(thisWeekStart);
+    return expDate >= prevWeekStart && expDate < prevWeekEnd;
+  }
+  if (allowanceType === "monthly") {
+    var py = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+    var pm = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
+    return expDate.getMonth() === pm && expDate.getFullYear() === py;
+  }
+  return false;
+}
+
 const TABS = ["home", "allowance", "expenses", "profile"];
 const TAB_LABELS = { home: "Home", expenses: "Expenses", allowance: "Allowance", profile: "Profile" };
 
@@ -144,16 +171,26 @@ const GLOBAL_STYLES = `
   .period-btn { flex:1; padding:8px 0; border:none; border-radius:10px; font-family:'Sora',sans-serif; font-weight:700; font-size:0.82rem; cursor:pointer; transition:all 0.2s; }
   .allowance-type-head-row { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
   .allowance-type-head-row .card-title { margin-bottom:0 !important; }
+  .allowance-type-controls { display:flex; align-items:center; gap:8px; flex-shrink:0; }
+  .allowance-type-controls .allowance-staytype-spacer { display:none; width:34px; flex-shrink:0; }
+  .allowance-type-controls .allowance-staytype-center { flex:0 0 auto; display:flex; justify-content:flex-start; min-width:0; }
+  .allowance-type-controls .allowance-history-btn { width:34px; height:34px; flex-shrink:0; }
   .allowance-staytype-toggle { display:flex; background:#f1f5f9; border-radius:10px; padding:3px; gap:3px; flex-shrink:0; }
+  @media (max-width:768px) {
+    .expenses-period-toggle { justify-content:center; flex-wrap:wrap; }
+    .expenses-period-toggle .period-btn { flex:0 1 auto; padding:8px 12px; min-width:0; }
+    .allowance-chart-period-toggle { justify-content:center; flex-wrap:wrap; }
+    .allowance-chart-period-toggle .period-btn { flex:0 1 auto; padding:8px 12px; min-width:0; }
+    .allowance-type-head-row { flex-direction:column; align-items:stretch; }
+    .allowance-type-controls { width:100%; }
+    .allowance-type-controls .allowance-staytype-spacer { display:block; }
+    .allowance-type-controls .allowance-staytype-center { flex:1; justify-content:center; }
+  }
   .home-summary-grid { display:grid; grid-template-columns: 1fr; gap:14px; margin-bottom:20px; }
   .home-summary-secondary { display:grid; grid-template-columns: 1fr 1fr; gap:14px; }
   @media (min-width: 900px) {
     .home-summary-grid { grid-template-columns: repeat(3, minmax(220px, 1fr)); align-items: stretch; }
     .home-summary-secondary { display: contents; }
-  }
-  @media (max-width:768px) {
-    .allowance-type-head-row { flex-direction:column; align-items:stretch; }
-    .allowance-type-head-row .allowance-staytype-toggle { align-self:center; }
   }
   /* Auth: room below fields so mobile keyboard scroll doesn’t hide inputs */
   .auth-page-root { min-height:100vh; min-height:100dvh; padding:20px; box-sizing:border-box; }
@@ -628,6 +665,7 @@ function HomeTab({ expenses, allowance, allowanceType, allowanceUpdatedAt, user,
   const [deptPeriod, setDeptPeriod] = useState(semester === "secondsem" ? "secondsem" : "firstsem");
   const [deptStayType, setDeptStayType] = useState(normalizeStayType(stayType));
   const [deptChartNarrow, setDeptChartNarrow] = useState(typeof window !== "undefined" ? window.innerWidth < 520 : false);
+  const [showCategoryCompare, setShowCategoryCompare] = useState(true);
   const nowYear = new Date().getFullYear();
 
   useEffect(function() {
@@ -711,18 +749,24 @@ function HomeTab({ expenses, allowance, allowanceType, allowanceUpdatedAt, user,
 
   const deptPeriodLabel = deptPeriod === "firstsem" ? "1st Semester (Aug–Dec)" : deptPeriod === "secondsem" ? "2nd Semester (Jan–May)" : "Yearly (" + nowYear + ")";
   
-  // Dynamically include Boarding category only if toggle is "boarding"
+  // Category colors aligned with Expenses charts (Food→blue … Boarding→green)
   const deptStackCats = [
-    { key: "Food", fill: "#FF6B35", name: "Food" },
-    { key: "Transport", fill: "#4A90D9", name: "Transport" },
-    { key: "Other", fill: "#4CAF50", name: "Other" },
-    ...(deptStayType === "boarding" ? [{ key: "Boarding", fill: "#ef4444", name: "Boarding" }] : []),
-    { key: "School", fill: "#F5C518", name: "School (highlight)", stroke: "#1e3a8a", strokeWidth: 2 }
+    { key: "Food", fill: "#4F46E5", name: "Food" },
+    { key: "Transport", fill: "#8B5CF6", name: "Transport" },
+    { key: "Other", fill: "#F97316", name: "Other" },
+    ...(deptStayType === "boarding" ? [{ key: "Boarding", fill: "#22C55E", name: "Boarding" }] : []),
+    { key: "School", fill: "#FACC15", name: "School (highlight)", stroke: "#1e3a8a", strokeWidth: 2 }
   ];
 
   const catData = CATEGORIES.map(function(c, i) {
     return { name: c, value: activeExpenses.filter(function(e) { return e.category === c; }).reduce(function(s, e) { return s + e.amount; }, 0), color: COLORS[i] };
   }).filter(function(d) { return d.value > 0; });
+
+  const previousPeriodExpenses = useMemo(function() {
+    return expenses.filter(function(e) { return expenseInPreviousAllowancePeriod(e, allowanceType); });
+  }, [expenses, allowanceType]);
+  const prevTotal = previousPeriodExpenses.reduce(function(s, e) { return s + e.amount; }, 0);
+  const comparePeriodLabel = allowanceType === "daily" ? "yesterday" : allowanceType === "weekly" ? "last week" : "last month";
 
   const foodTotal = activeExpenses.filter(function(e) { return e.category === "Food"; }).reduce(function(s, e) { return s + e.amount; }, 0);
   const transportTotal = activeExpenses.filter(function(e) { return e.category === "Transport"; }).reduce(function(s, e) { return s + e.amount; }, 0);
@@ -807,10 +851,24 @@ function HomeTab({ expenses, allowance, allowanceType, allowanceUpdatedAt, user,
         </div>
       </div>
       <div className="card">
-        <p className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <img src={DONUT_LOGO_IMG} alt="Donut chart" style={{ width: 18, height: 18, borderRadius: "50%", objectFit: "cover" }} />
-          Spending by Category (Donut Chart)
-        </p>
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", justifyContent: "space-between", gap: 10, marginBottom: catData.length > 0 ? 6 : 0 }}>
+          <p className="card-title" style={{ display: "flex", alignItems: "center", gap: 8, margin: 0 }}>
+            <img src={DONUT_LOGO_IMG} alt="Donut chart" style={{ width: 18, height: 18, borderRadius: "50%", objectFit: "cover" }} />
+            Spending by Category (Donut Chart)
+          </p>
+          {catData.length > 0 && (
+            <button type="button" onClick={function() { setShowCategoryCompare(function(v) { return !v; }); }}
+              style={{ fontSize: "0.72rem", fontWeight: 700, color: "#475569", background: showCategoryCompare ? "#e0f2fe" : "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontFamily: "'Sora',sans-serif" }}>
+              {showCategoryCompare ? "Hide" : "Show"} vs {comparePeriodLabel}
+            </button>
+          )}
+        </div>
+        {catData.length > 0 && showCategoryCompare && (
+          <p style={{ fontSize: "0.72rem", color: "#94a3b8", marginBottom: 12, lineHeight: 1.45 }}>
+            <strong style={{ color: "#64748b" }}>Mix comparison:</strong> change in share of your spending vs <strong>{comparePeriodLabel}</strong> (percentage points of total spend).{" "}
+            {prevTotal === 0 ? <span>No spending was recorded {comparePeriodLabel} — comparisons will appear once both periods have data.</span> : null}
+          </p>
+        )}
         {catData.length === 0 ? <p style={{ color: "#94a3b8", textAlign: "center", padding: "20px 0" }}>No expenses yet</p> : (
           <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
             <ResponsiveContainer width={200} height={200}>
@@ -821,13 +879,32 @@ function HomeTab({ expenses, allowance, allowanceType, allowanceUpdatedAt, user,
                 <Tooltip formatter={function(v) { return "₱" + Number(v || 0).toLocaleString(); }} contentStyle={{ borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 8px 24px rgba(15,23,42,0.12)" }} />
               </PieChart>
             </ResponsiveContainer>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               {catData.map(function(c, i) {
+                var prevVal = previousPeriodExpenses.filter(function(e) { return e.category === c.name; }).reduce(function(s, e) { return s + e.amount; }, 0);
+                var currPct = total > 0 ? (c.value / total) * 100 : 0;
+                var prevPct = prevTotal > 0 ? (prevVal / prevTotal) * 100 : null;
+                var deltaPp = prevPct != null ? currPct - prevPct : null;
                 return (
-                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                    <div style={{ width: 12, height: 12, borderRadius: 3, background: c.color }} />
-                    <span style={{ flex: 1, fontSize: "0.88rem", fontWeight: 600, color: "#334155" }}>{c.name}</span>
-                    <span style={{ fontWeight: 800, fontSize: "0.88rem", color: c.color }}>₱{c.value.toLocaleString()}</span>
+                  <div key={i} style={{ marginBottom: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ width: 12, height: 12, borderRadius: 3, background: c.color, flexShrink: 0 }} />
+                      <span style={{ flex: 1, fontSize: "0.88rem", fontWeight: 600, color: "#334155" }}>{c.name}</span>
+                      <span style={{ fontWeight: 800, fontSize: "0.88rem", color: c.color, whiteSpace: "nowrap" }}>₱{c.value.toLocaleString()}</span>
+                    </div>
+                    {showCategoryCompare && (
+                      <div style={{ paddingLeft: 20, marginTop: 4, fontSize: "0.72rem", color: "#64748b", lineHeight: 1.4 }}>
+                        {prevTotal === 0 ? (
+                          <span style={{ color: "#94a3b8" }}>—</span>
+                        ) : Math.abs(deltaPp) < 0.5 ? (
+                          <span>Same share as {comparePeriodLabel} (~{Math.round(currPct)}% of spend)</span>
+                        ) : deltaPp > 0 ? (
+                          <span><span style={{ color: "#b91c1c", fontWeight: 700 }}>↑ {Math.round(Math.abs(deltaPp))} pts</span> vs {comparePeriodLabel} (larger slice of your spending)</span>
+                        ) : (
+                          <span><span style={{ color: "#15803d", fontWeight: 700 }}>↓ {Math.round(Math.abs(deltaPp))} pts</span> vs {comparePeriodLabel} (smaller slice)</span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -881,7 +958,7 @@ function HomeTab({ expenses, allowance, allowanceType, allowanceUpdatedAt, user,
           </select>
         </div>
         <p style={{ fontSize: deptChartNarrow ? "0.68rem" : "0.73rem", color: "#94a3b8", marginBottom: 6, textAlign: "center", lineHeight: 1.45, padding: "0 4px" }}>
-          {deptPeriodLabel} · Each column is one month: categories stack in pesos (Food, Transport, Other{deptStayType === "boarding" ? ", Boarding in red" : ""}, then <strong style={{ color: "#ca8a04" }}>School</strong> on top with a bold outline). Only students matching <strong>{deptStayType === "uwian" ? "Uwian" : "Boarding"}</strong> are included.
+          {deptPeriodLabel} · Each column is one month: categories stack in pesos (Food, Transport, Other{deptStayType === "boarding" ? ", Boarding in green" : ""}, then <strong style={{ color: "#ca8a04" }}>School</strong> on top with a bold outline). Only students matching <strong>{deptStayType === "uwian" ? "Uwian" : "Boarding"}</strong> are included.
         </p>
         <p style={{ fontSize: deptChartNarrow ? "0.64rem" : "0.68rem", color: "#94a3b8", marginBottom: 10, textAlign: "center", lineHeight: 1.45, padding: "0 4px" }}>
           Tap the chart for department shares: each line is that department&apos;s % of <strong>all</strong> spending in that month (not per category).
@@ -962,6 +1039,7 @@ function ExpensesTab({ expenses, stayType, onAddExpense, onUpdateExpense, onDele
   function defaultExpenseForm() {
     return { date: localDateYYYYMMDD(new Date()), category: "Food", amount: "", note: "" };
   }
+  const expenseFormRef = useRef(null);
   const [form, setForm] = useState({ date: localDateYYYYMMDD(new Date()), category: "Food", amount: "", note: "" });
   const [editId, setEditId] = useState(null);
   const [period, setPeriod] = useState("daily");
@@ -1031,6 +1109,25 @@ function ExpensesTab({ expenses, stayType, onAddExpense, onUpdateExpense, onDele
   }
 
   function handleEdit(exp) { setForm({ date: exp.date || localDateYYYYMMDD(new Date()), category: exp.category, amount: String(exp.amount), note: exp.note || "" }); setEditId(exp.id); setShowForm(true); }
+
+  useEffect(function() {
+    if (!editId || !showForm) return;
+    var cancelled = false;
+    var t = window.setTimeout(function() {
+      if (cancelled) return;
+      var el = expenseFormRef.current;
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "start", inline: "nearest" });
+      var firstField = el.querySelector("input.app-input, select.app-input");
+      if (firstField && typeof firstField.focus === "function") {
+        firstField.focus({ preventScroll: true });
+      }
+    }, 80);
+    return function() {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, [editId, showForm]);
   function handleDelete(id) { setConfirmDelete(id); } // show confirm before delete
   function handleToggleAddForm() {
     if (showForm) {
@@ -1063,7 +1160,7 @@ function ExpensesTab({ expenses, stayType, onAddExpense, onUpdateExpense, onDele
         <button className="btn-primary" onClick={handleToggleAddForm}>{showForm ? "✕ Cancel" : "+ Add"}</button>
       </div>
       {showForm && (
-        <div className="card" style={{ marginBottom: 20, border: "2px solid #e0f2fe", animation: "fadeUp 0.3s ease" }}>
+        <div ref={expenseFormRef} className="card" style={{ marginBottom: 20, border: "2px solid #e0f2fe", animation: "fadeUp 0.3s ease", scrollMarginTop: 16 }}>
           <p className="card-title">{editId ? "✏️ Edit Expense" : "➕ New Expense"}</p>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
 
@@ -1079,7 +1176,7 @@ function ExpensesTab({ expenses, stayType, onAddExpense, onUpdateExpense, onDele
           <button className="btn-primary" style={{ width: "100%", marginTop: 14 }} onClick={handleSave}>{editId ? "Update Expense" : "Save Expense"}</button>
         </div>
       )}
-      <div style={{ display: "flex", gap: 8, marginBottom: 20, background: "#f1f5f9", borderRadius: 12, padding: 4 }}>
+      <div className="expenses-period-toggle" style={{ display: "flex", gap: 8, marginBottom: 20, background: "#f1f5f9", borderRadius: 12, padding: 4 }}>
         {[{key:"daily",label:"Daily"},{key:"weekly",label:"Weekly"},{key:"monthly",label:"Monthly"},{key:"yearly",label:"Yearly"}].map(function(p) {
           return <button key={p.key} className="period-btn" onClick={function() { setPeriod(p.key); }} style={{ background: period === p.key ? "#fff" : "transparent", color: period === p.key ? "#4A90D9" : "#64748b", boxShadow: period === p.key ? "0 2px 8px rgba(0,0,0,0.08)" : "none" }}>{p.label}</button>;
         })}
@@ -1102,13 +1199,19 @@ function ExpensesTab({ expenses, stayType, onAddExpense, onUpdateExpense, onDele
               <img src={DONUT_LOGO_IMG} alt="Donut chart" style={{ width: 18, height: 18, borderRadius: "50%", objectFit: "cover" }} />
               Donut Chart
             </p>
-            <ResponsiveContainer width="100%" height={180}>
-              <PieChart>
-                <Pie data={chartData} cx="50%" cy="50%" innerRadius={46} outerRadius={74} cornerRadius={10} startAngle={90} endAngle={-270} paddingAngle={2} stroke="none" dataKey="value" labelLine={false} label={function(p) { return p && p.percent > 0.07 ? Math.round(p.percent * 100) + "%" : ""; }}>
+            <ResponsiveContainer width="100%" height={200}>
+              <PieChart margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
+                <Pie data={chartData} cx="50%" cy="46%" innerRadius={44} outerRadius={70} cornerRadius={10} startAngle={90} endAngle={-270} paddingAngle={2} stroke="none" dataKey="value" labelLine={false} label={false}>
                   {chartData.map(function(e, i) { return <Cell key={i} fill={e.color} />; })}
                 </Pie>
-                <Tooltip formatter={function(v) { return "₱" + Number(v || 0).toLocaleString(); }} contentStyle={{ borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 8px 24px rgba(15,23,42,0.12)" }} />
-                <Legend verticalAlign="bottom" iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+                <Tooltip formatter={function(value, name, item) {
+                  var payload = item && item.payload;
+                  var cat = payload && payload.name != null ? payload.name : name;
+                  var total = chartData.reduce(function(s, e) { return s + (Number(e.value) || 0); }, 0);
+                  var pct = total > 0 ? Math.round((Number(value) / total) * 100) : 0;
+                  return ["₱" + Number(value || 0).toLocaleString() + " (" + pct + "%)", cat];
+                }} contentStyle={{ borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 8px 24px rgba(15,23,42,0.12)" }} />
+                <Legend verticalAlign="bottom" iconType="circle" wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -1289,33 +1392,37 @@ function AllowanceTab({ allowance, setAllowance, allowanceType, setAllowanceType
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="allowance-type-head-row">
           <p className="card-title" style={{ margin: 0 }}>📅 Allowance Type</p>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div className="allowance-staytype-toggle">
-            {[{ key: "uwian", label: "🏠 Uwian" }, { key: "boarding", label: "🏢 Boarding" }].map(function(t) {
-              const isActive = stayType === t.key;
-              return (
-                <button key={t.key} onClick={async function() { setStayType(t.key); try { await onSaveAllowance(allowance, allowanceType, semester, t.key); } catch {} setToast({ msg: t.label + " selected!", type: "success" }); }}
-                  style={{ padding: "6px 12px", border: "none", borderRadius: 8, fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: "0.76rem", cursor: "pointer", transition: "all 0.2s",
-                    background: isActive ? "#fff" : "transparent",
-                    color: isActive ? "#16a34a" : "#64748b",
-                    boxShadow: isActive ? "0 2px 6px rgba(0,0,0,0.1)" : "none" }}>
-                  {t.label}
-                </button>
-              );
-            })}
-          </div>
-          <button
-            type="button"
-            onClick={function() { setShowHistory(function(v) { return !v; }); }}
-            title="Allowance history"
-            style={{ width: 34, height: 34, borderRadius: "50%", border: "1px solid #cbd5e1", background: showHistory ? "#e2e8f0" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M4.5 10a7.5 7.5 0 1 1 2.2 5.3" stroke="#334155" strokeWidth="1.9" strokeLinecap="round"/>
-              <path d="M4.5 10V6.8M4.5 10h3.2" stroke="#334155" strokeWidth="1.9" strokeLinecap="round"/>
-              <path d="M12 8.8v3.6l2.5 1.4" stroke="#334155" strokeWidth="1.9" strokeLinecap="round"/>
-            </svg>
-          </button>
+          <div className="allowance-type-controls">
+            <div className="allowance-staytype-spacer" aria-hidden="true" />
+            <div className="allowance-staytype-center">
+              <div className="allowance-staytype-toggle">
+                {[{ key: "uwian", label: "🏠 Uwian" }, { key: "boarding", label: "🏢 Boarding" }].map(function(t) {
+                  const isActive = stayType === t.key;
+                  return (
+                    <button key={t.key} onClick={async function() { setStayType(t.key); try { await onSaveAllowance(allowance, allowanceType, semester, t.key); } catch {} setToast({ msg: t.label + " selected!", type: "success" }); }}
+                      style={{ padding: "6px 12px", border: "none", borderRadius: 8, fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: "0.76rem", cursor: "pointer", transition: "all 0.2s",
+                        background: isActive ? "#fff" : "transparent",
+                        color: isActive ? "#16a34a" : "#64748b",
+                        boxShadow: isActive ? "0 2px 6px rgba(0,0,0,0.1)" : "none" }}>
+                      {t.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="allowance-history-btn"
+              onClick={function() { setShowHistory(function(v) { return !v; }); }}
+              title="Allowance history"
+              style={{ borderRadius: "50%", border: "1px solid #cbd5e1", background: showHistory ? "#e2e8f0" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M4.5 10a7.5 7.5 0 1 1 2.2 5.3" stroke="#334155" strokeWidth="1.9" strokeLinecap="round"/>
+                <path d="M4.5 10V6.8M4.5 10h3.2" stroke="#334155" strokeWidth="1.9" strokeLinecap="round"/>
+                <path d="M12 8.8v3.6l2.5 1.4" stroke="#334155" strokeWidth="1.9" strokeLinecap="round"/>
+              </svg>
+            </button>
           </div>
         </div>
         {showHistory && (
@@ -1401,12 +1508,12 @@ function AllowanceTab({ allowance, setAllowance, allowanceType, setAllowanceType
           </div>
         </div>
         <p style={{ fontSize: "0.72rem", color: "#94a3b8", marginTop: 10, textAlign: "center" }}>
-          {allowanceType === "daily" ? "Monthly = Daily × 30 · Weekly = Daily × 7" : allowanceType === "weekly" ? "Monthly = Weekly × 4 · Daily = Weekly ÷ 7" : "Weekly = Monthly ÷ 4 · Daily = Monthly ÷ 30"}
+          {allowanceType === "daily" ? "Monthly = Daily × 30 · Weekly = Daily × 7" : allowanceType === "weekly" ? "Daily = Weekly ÷ 7 · Monthly = Weekly × 4" : "Weekly = Monthly ÷ 4 · Daily = Monthly ÷ 30"}
         </p>
       </div>
 
       {/* Chart Period Filter */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 16, background: "#f1f5f9", borderRadius: 12, padding: 4 }}>
+      <div className="allowance-chart-period-toggle" style={{ display: "flex", gap: 8, marginBottom: 16, background: "#f1f5f9", borderRadius: 12, padding: 4 }}>
         {[{key:"daily",label:"Daily"},{key:"weekly",label:"Weekly"},{key:"monthly",label:"Monthly"},{key:"yearly",label:"Yearly"}].map(function(p) {
           return <button key={p.key} className="period-btn" onClick={function() { setPeriod(p.key); }} style={{ background: period === p.key ? "#fff" : "transparent", color: period === p.key ? "#4A90D9" : "#64748b", boxShadow: period === p.key ? "0 2px 8px rgba(0,0,0,0.08)" : "none" }}>{p.label}</button>;
         })}
@@ -1738,7 +1845,7 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [hasSeenWelcome, setHasSeenWelcome] = useState(localStorage.getItem("hasSeenWelcome") === "true");
-  const [tab, setTab] = useState(localStorage.getItem("currentTab") || "home");
+  const [tab, setTab] = useState("home");
   const [allowance, setAllowance] = useState(0);
   const [allowanceType, setAllowanceType] = useState("monthly");
   const [allowanceUpdatedAt, setAllowanceUpdatedAt] = useState("");
@@ -1753,11 +1860,6 @@ export default function App() {
   const [allUsersExpenses, setAllUsersExpenses] = useState([]);
   const [expenseSyncError, setExpenseSyncError] = useState(null);
   const [allowanceHistory, setAllowanceHistory] = useState({ daily: {}, weekly: {}, monthly: {} });
-
-  // Save tab to localStorage when it changes
-  useEffect(function() {
-    localStorage.setItem("currentTab", tab);
-  }, [tab]);
 
   useEffect(function() {
     localStorage.setItem("selectedSemester", semester);

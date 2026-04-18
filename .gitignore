@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Nested duplicate project (has its own .git); keep work in repo root only
+KaBudget-Student-Allowance-and-Expenses-Monitoring-System/
