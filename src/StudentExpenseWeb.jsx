@@ -1508,7 +1508,7 @@ function AllowanceTab({ allowance, setAllowance, allowanceType, setAllowanceType
           </div>
         </div>
         <p style={{ fontSize: "0.72rem", color: "#94a3b8", marginTop: 10, textAlign: "center" }}>
-          {allowanceType === "daily" ? "Monthly = Daily × 30 · Weekly = Daily × 7" : allowanceType === "weekly" ? "Daily = Weekly ÷ 7 · Monthly = Weekly × 4" : "Weekly = Monthly ÷ 4 · Daily = Monthly ÷ 30"}
+          {allowanceType === "daily" ? "Daily = Weekly ÷ 7 · Monthly = Weekly × 4" : allowanceType === "weekly" ? "Weekly = Monthly ÷ 4 · Daily = Monthly ÷ 30" : "Monthly = Daily × 30 · Weekly = Daily × 7"}
         </p>
       </div>
 
