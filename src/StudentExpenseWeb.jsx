@@ -851,14 +851,14 @@ function HomeTab({ expenses, allowance, allowanceType, allowanceUpdatedAt, user,
         </div>
       </div>
       <div className="card">
-        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", justifyContent: "space-between", gap: 10, marginBottom: catData.length > 0 ? 6 : 0 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: deptChartNarrow ? "center" : "flex-start", justifyContent: deptChartNarrow ? "center" : "space-between", gap: 10, marginBottom: catData.length > 0 ? 6 : 0 }}>
           <p className="card-title" style={{ display: "flex", alignItems: "center", gap: 8, margin: 0 }}>
             <img src={DONUT_LOGO_IMG} alt="Donut chart" style={{ width: 18, height: 18, borderRadius: "50%", objectFit: "cover" }} />
             Spending by Category (Donut Chart)
           </p>
           {catData.length > 0 && (
             <button type="button" onClick={function() { setShowCategoryCompare(function(v) { return !v; }); }}
-              style={{ fontSize: "0.72rem", fontWeight: 700, color: "#475569", background: showCategoryCompare ? "#e0f2fe" : "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontFamily: "'Sora',sans-serif" }}>
+              style={{ fontSize: deptChartNarrow ? "0.68rem" : "0.72rem", fontWeight: 700, color: "#475569", background: showCategoryCompare ? "#e0f2fe" : "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: 8, padding: deptChartNarrow ? "5px 9px" : "6px 10px", cursor: "pointer", fontFamily: "'Sora',sans-serif", marginLeft: deptChartNarrow ? "auto" : 0, marginRight: deptChartNarrow ? "auto" : 0 }}>
               {showCategoryCompare ? "Hide" : "Show"} vs {comparePeriodLabel}
             </button>
           )}
@@ -870,7 +870,7 @@ function HomeTab({ expenses, allowance, allowanceType, allowanceUpdatedAt, user,
           </p>
         )}
         {catData.length === 0 ? <p style={{ color: "#94a3b8", textAlign: "center", padding: "20px 0" }}>No expenses yet</p> : (
-          <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center", justifyContent: deptChartNarrow ? "center" : "flex-start" }}>
             <ResponsiveContainer width={200} height={200}>
               <PieChart>
                 <Pie data={catData} cx="50%" cy="50%" innerRadius={54} outerRadius={78} cornerRadius={10} startAngle={90} endAngle={-270} paddingAngle={2} stroke="none" dataKey="value">
@@ -879,7 +879,7 @@ function HomeTab({ expenses, allowance, allowanceType, allowanceUpdatedAt, user,
                 <Tooltip formatter={function(v) { return "₱" + Number(v || 0).toLocaleString(); }} contentStyle={{ borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 8px 24px rgba(15,23,42,0.12)" }} />
               </PieChart>
             </ResponsiveContainer>
-            <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ flex: 1, minWidth: 0, width: deptChartNarrow ? "100%" : "auto" }}>
               {catData.map(function(c, i) {
                 var prevVal = previousPeriodExpenses.filter(function(e) { return e.category === c.name; }).reduce(function(s, e) { return s + e.amount; }, 0);
                 var currPct = total > 0 ? (c.value / total) * 100 : 0;
@@ -936,13 +936,13 @@ function HomeTab({ expenses, allowance, allowanceType, allowanceUpdatedAt, user,
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4, flexWrap: "wrap", gap: 8 }}>
           <p className="card-title" style={{ margin: 0, fontSize: deptChartNarrow ? "0.95rem" : undefined }}>🏫 Department spending comparison</p>
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "center", flexWrap: "wrap", marginBottom: 10 }}>
-          <div style={{ display: "flex", background: "#f1f5f9", borderRadius: 10, padding: 3, gap: 3, maxWidth: "100%" }}>
+        <div style={{ display: "flex", gap: deptChartNarrow ? 6 : 8, alignItems: "center", justifyContent: "center", flexWrap: deptChartNarrow ? "nowrap" : "wrap", marginBottom: 10 }}>
+          <div style={{ display: "flex", background: "#f1f5f9", borderRadius: deptChartNarrow ? 9 : 10, padding: deptChartNarrow ? 2 : 3, gap: deptChartNarrow ? 2 : 3, maxWidth: "100%", flex: deptChartNarrow ? "1 1 60%" : "0 1 auto", minWidth: 0 }}>
             {[{ key: "uwian", label: "🏠 Uwian" }, { key: "boarding", label: "🏢 Boarding" }].map(function(t) {
               const isActive = deptStayType === t.key;
               return (
                 <button key={t.key} onClick={function() { setDeptStayType(t.key); }}
-                  style={{ padding: deptChartNarrow ? "6px 8px" : "5px 10px", border: "none", borderRadius: 8, fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: deptChartNarrow ? "0.68rem" : "0.72rem", cursor: "pointer", transition: "all 0.2s", flex: deptChartNarrow ? "1 1 44%" : "none",
+                  style={{ padding: deptChartNarrow ? "4px 6px" : "5px 10px", border: "none", borderRadius: deptChartNarrow ? 7 : 8, fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: deptChartNarrow ? "0.62rem" : "0.72rem", cursor: "pointer", transition: "all 0.2s", flex: deptChartNarrow ? "1 1 50%" : "none", minWidth: 0, whiteSpace: "nowrap",
                     background: isActive ? "#fff" : "transparent", color: isActive ? "#2563eb" : "#64748b",
                     boxShadow: isActive ? "0 2px 6px rgba(0,0,0,0.1)" : "none" }}>
                   {t.label}
@@ -951,7 +951,29 @@ function HomeTab({ expenses, allowance, allowanceType, allowanceUpdatedAt, user,
             })}
           </div>
           <select value={deptPeriod} onChange={function(e) { setDeptPeriod(e.target.value); }}
-            style={{ padding: deptChartNarrow ? "6px 8px" : "7px 12px", borderRadius: 10, border: "2px solid #e2e8f0", fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: deptChartNarrow ? "0.72rem" : "0.8rem", color: "#0f172a", background: "#f8fafc", cursor: "pointer", outline: "none", width: deptChartNarrow ? "100%" : "auto", maxWidth: "100%" }}>
+            style={{
+              padding: deptChartNarrow ? "4px 24px 4px 8px" : "7px 12px",
+              borderRadius: deptChartNarrow ? 9 : 10,
+              border: deptChartNarrow ? "1.5px solid #dbe5f1" : "2px solid #e2e8f0",
+              fontFamily: "'Sora',sans-serif",
+              fontWeight: deptChartNarrow ? 600 : 700,
+              fontSize: deptChartNarrow ? "0.64rem" : "0.8rem",
+              lineHeight: 1.2,
+              color: "#0f172a",
+              background: deptChartNarrow
+                ? "#f8fafc url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='M5 7.5l5 5 5-5' stroke='%2364758b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\") no-repeat right 8px center"
+                : "#f8fafc",
+              backgroundSize: deptChartNarrow ? "10px 10px" : "auto",
+              appearance: deptChartNarrow ? "none" : "auto",
+              WebkitAppearance: deptChartNarrow ? "none" : "auto",
+              MozAppearance: deptChartNarrow ? "none" : "auto",
+              cursor: "pointer",
+              outline: "none",
+              width: deptChartNarrow ? "40%" : "auto",
+              minWidth: deptChartNarrow ? 128 : 0,
+              maxWidth: "100%",
+              flex: deptChartNarrow ? "0 0 40%" : "0 1 auto"
+            }}>
             <option value="firstsem">1st Semester (Aug–Dec)</option>
             <option value="secondsem">2nd Semester (Jan–May)</option>
             <option value="yearly">Yearly</option>
