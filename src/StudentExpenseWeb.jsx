@@ -870,7 +870,7 @@ function HomeTab({ expenses, allowance, allowanceType, allowanceUpdatedAt, user,
           </p>
         )}
         {catData.length === 0 ? <p style={{ color: "#94a3b8", textAlign: "center", padding: "20px 0" }}>No expenses yet</p> : (
-          <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center", justifyContent: deptChartNarrow ? "center" : "flex-start" }}>
+          <div style={{ display: "flex", gap: deptChartNarrow ? 12 : 16, flexWrap: "wrap", flexDirection: deptChartNarrow ? "column" : "row", alignItems: "center", justifyContent: deptChartNarrow ? "center" : "flex-start", width: "100%" }}>
             <ResponsiveContainer width={200} height={200}>
               <PieChart>
                 <Pie data={catData} cx="50%" cy="50%" innerRadius={54} outerRadius={78} cornerRadius={10} startAngle={90} endAngle={-270} paddingAngle={2} stroke="none" dataKey="value">
@@ -879,18 +879,18 @@ function HomeTab({ expenses, allowance, allowanceType, allowanceUpdatedAt, user,
                 <Tooltip formatter={function(v) { return "₱" + Number(v || 0).toLocaleString(); }} contentStyle={{ borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 8px 24px rgba(15,23,42,0.12)" }} />
               </PieChart>
             </ResponsiveContainer>
-            <div style={{ flex: 1, minWidth: 0, width: deptChartNarrow ? "100%" : "auto" }}>
+            <div style={{ flex: 1, minWidth: 0, width: deptChartNarrow ? "100%" : "auto", maxWidth: deptChartNarrow ? 330 : "100%", margin: deptChartNarrow ? "0 auto" : "0" }}>
               {catData.map(function(c, i) {
                 var prevVal = previousPeriodExpenses.filter(function(e) { return e.category === c.name; }).reduce(function(s, e) { return s + e.amount; }, 0);
                 var currPct = total > 0 ? (c.value / total) * 100 : 0;
                 var prevPct = prevTotal > 0 ? (prevVal / prevTotal) * 100 : null;
                 var deltaPp = prevPct != null ? currPct - prevPct : null;
                 return (
-                  <div key={i} style={{ marginBottom: 10 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div key={i} style={{ marginBottom: 10, width: "100%" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", minWidth: 0 }}>
                       <div style={{ width: 12, height: 12, borderRadius: 3, background: c.color, flexShrink: 0 }} />
-                      <span style={{ flex: 1, fontSize: "0.88rem", fontWeight: 600, color: "#334155" }}>{c.name}</span>
-                      <span style={{ fontWeight: 800, fontSize: "0.88rem", color: c.color, whiteSpace: "nowrap" }}>₱{c.value.toLocaleString()}</span>
+                      <span style={{ flex: 1, minWidth: 0, fontSize: deptChartNarrow ? "0.84rem" : "0.88rem", fontWeight: 600, color: "#334155" }}>{c.name}</span>
+                      <span style={{ fontWeight: 800, fontSize: deptChartNarrow ? "0.82rem" : "0.88rem", color: c.color, whiteSpace: "nowrap", flexShrink: 0 }}>₱{c.value.toLocaleString()}</span>
                     </div>
                     {showCategoryCompare && (
                       <div style={{ paddingLeft: 20, marginTop: 4, fontSize: "0.72rem", color: "#64748b", lineHeight: 1.4 }}>
