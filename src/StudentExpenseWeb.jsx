@@ -793,11 +793,37 @@ function HomeTab({ expenses, allowance, allowanceType, allowanceUpdatedAt, user,
     return { name: c, value: activeExpenses.filter(function(e) { return e.category === c; }).reduce(function(s, e) { return s + e.amount; }, 0), color: COLORS[i] };
   }).filter(function(d) { return d.value > 0; });
 
-  const previousPeriodExpenses = useMemo(function() {
-    return expenses.filter(function(e) { return expenseInPreviousAllowancePeriod(e, allowanceType); });
+  const previousPeriodComparison = useMemo(function() {
+    var defaultLabel = allowanceType === "daily" ? "yesterday" : allowanceType === "weekly" ? "last week" : "last month";
+    var defaultExpenses = expenses.filter(function(e) { return expenseInPreviousAllowancePeriod(e, allowanceType); });
+
+    // Option B fallback for daily mode: yesterday first, then nearest past day with data.
+    if (allowanceType !== "daily" || defaultExpenses.length > 0) {
+      return { expenses: defaultExpenses, label: defaultLabel, fallbackDate: "" };
+    }
+
+    var todayKey = localDateYYYYMMDD(new Date());
+    var nearestPastDay = "";
+    expenses.forEach(function(e) {
+      var dayKey = expenseCalendarDateStr(e);
+      if (!dayKey || dayKey >= todayKey) return;
+      if (!nearestPastDay || dayKey > nearestPastDay) nearestPastDay = dayKey;
+    });
+
+    if (!nearestPastDay) {
+      return { expenses: defaultExpenses, label: defaultLabel, fallbackDate: "" };
+    }
+
+    return {
+      expenses: expenses.filter(function(e) { return expenseCalendarDateStr(e) === nearestPastDay; }),
+      label: "last recorded day",
+      fallbackDate: nearestPastDay
+    };
   }, [expenses, allowanceType]);
+  const previousPeriodExpenses = previousPeriodComparison.expenses;
   const prevTotal = previousPeriodExpenses.reduce(function(s, e) { return s + e.amount; }, 0);
-  const comparePeriodLabel = allowanceType === "daily" ? "yesterday" : allowanceType === "weekly" ? "last week" : "last month";
+  const comparePeriodLabel = previousPeriodComparison.label;
+  const compareFallbackDate = previousPeriodComparison.fallbackDate;
 
   const foodTotal = activeExpenses.filter(function(e) { return e.category === "Food"; }).reduce(function(s, e) { return s + e.amount; }, 0);
   const transportTotal = activeExpenses.filter(function(e) { return e.category === "Transport"; }).reduce(function(s, e) { return s + e.amount; }, 0);
@@ -897,6 +923,7 @@ function HomeTab({ expenses, allowance, allowanceType, allowanceUpdatedAt, user,
         {catData.length > 0 && showCategoryCompare && (
           <p style={{ fontSize: "0.72rem", color: "#94a3b8", marginBottom: 12, lineHeight: 1.45 }}>
             <strong style={{ color: "#64748b" }}>Mix comparison:</strong> change in share of your spending vs <strong>{comparePeriodLabel}</strong> (percentage points of total spend).{" "}
+            {compareFallbackDate ? <span>Using last recorded day: <strong>{compareFallbackDate}</strong>. </span> : null}
             {prevTotal === 0 ? <span>No spending was recorded {comparePeriodLabel} — comparisons will appear once both periods have data.</span> : null}
           </p>
         )}
