@@ -13,7 +13,8 @@ import {
   onAuthStateChanged,
   sendPasswordResetEmail,
   EmailAuthProvider,
-  reauthenticateWithCredential
+  reauthenticateWithCredential,
+  updatePassword
 } from "firebase/auth";
 import {
   doc, setDoc, getDoc, collection, getDocs,
@@ -212,6 +213,15 @@ function formatDate(d) {
   return dt.toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
 }
 
+function isAllowedUserEmail(rawEmail) {
+  var email = String(rawEmail || "").trim().toLowerCase();
+  var basicEmailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+  if (!basicEmailPattern.test(email)) return false;
+  var domain = email.split("@")[1] || "";
+  // Only the official institutional domain is allowed.
+  return domain === "mabinicolleges.edu.ph";
+}
+
 function AnimatedNumber({ value, prefix }) {
   const [display, setDisplay] = useState(0);
   const rafRef = useRef(null);
@@ -359,6 +369,10 @@ function AuthPage({ onLogin }) {
   async function handleForgotSendEmail() {
     var fe = (fpEmail || "").trim();
     if (!fe) { setToast({ msg: "Please enter your email address.", type: "error" }); return; }
+    if (!isAllowedUserEmail(fe)) {
+      setToast({ msg: "Invalid Email. Please use your institutional email ending with @mabinicolleges.edu.ph.", type: "error" });
+      return;
+    }
     setFpEmail(fe);
     setFpLoading(true);
     // Show sent UI immediately — don't wait for Firebase (feels instant!)
@@ -387,6 +401,10 @@ function AuthPage({ onLogin }) {
     }
     if (!password) {
       setToast({ msg: "Please enter your password.", type: "error" });
+      return;
+    }
+    if (!isAllowedUserEmail(email)) {
+      setToast({ msg: "Invalid Email. Please use your institutional email ending with @mabinicolleges.edu.ph.", type: "error" });
       return;
     }
     setLoading(true);
@@ -426,6 +444,10 @@ function AuthPage({ onLogin }) {
         setToast({ msg: "Please enter your password.", type: "error" });
         return;
       }
+      if (!isAllowedUserEmail(le)) {
+        setToast({ msg: "Invalid Email. Please use your institutional email ending with @mabinicolleges.edu.ph.", type: "error" });
+        return;
+      }
       setShowConfirmLogin(true);
     } else {
       var missing = [];
@@ -445,6 +467,10 @@ function AuthPage({ onLogin }) {
       }
       if (form.password.length < 6) {
         setToast({ msg: "Password must be at least 6 characters!", type: "error" }); return;
+      }
+      if (!isAllowedUserEmail(form.email)) {
+        setToast({ msg: "Invalid Email. Please use your institutional email ending with @mabinicolleges.edu.ph.", type: "error" });
+        return;
       }
       setShowConfirm(true);
     }
@@ -554,11 +580,11 @@ function AuthPage({ onLogin }) {
               <button type="button" onClick={function() { setShowPassword(function(p) { return !p; }); }}
                 style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center" }}>
                 {showPassword ? (
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
                   </svg>
                 ) : (
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
                     <line x1="1" y1="1" x2="23" y2="23"/>
                   </svg>
@@ -567,7 +593,12 @@ function AuthPage({ onLogin }) {
             </div>
             <button className="auth-btn" onClick={handleSubmit}>{mode === "login" ? "Log In →" : "Create Account"}</button>
             {mode === "login" && (
-              <button type="button" onClick={function() { setFpStep(1); setFpEmail(""); }}
+              <button type="button" onClick={function() {
+                var prefill = (form.email || "").trim();
+                setFpStep(1);
+                setFpSent(false);
+                setFpEmail(prefill);
+              }}
                 style={{ background: "none", border: "none", color: "rgba(255,255,255,0.45)", fontFamily: "'Sora',sans-serif", fontSize: "0.82rem", cursor: "pointer", marginTop: 8, width: "100%", textAlign: "center", textDecoration: "underline" }}>
                 Forgot Password?
               </button>
@@ -592,7 +623,7 @@ function AuthPage({ onLogin }) {
               </p>
             </div>
             {!fpSent && (<>
-              <input className="auth-input" placeholder="Enter your email address" type="email"
+              <input className="auth-input" placeholder="Input Email Address" type="email"
                 value={fpEmail} onChange={function(e) { setFpEmail(e.target.value); }}
                 onKeyDown={function(e) { if (e.key === "Enter") handleForgotSendEmail(); }}
                 style={{ marginBottom: 14 }} />
@@ -665,7 +696,7 @@ function HomeTab({ expenses, allowance, allowanceType, allowanceUpdatedAt, user,
   const [deptPeriod, setDeptPeriod] = useState(semester === "secondsem" ? "secondsem" : "firstsem");
   const [deptStayType, setDeptStayType] = useState(normalizeStayType(stayType));
   const [deptChartNarrow, setDeptChartNarrow] = useState(typeof window !== "undefined" ? window.innerWidth < 520 : false);
-  const [showCategoryCompare, setShowCategoryCompare] = useState(true);
+  const [showCategoryCompare, setShowCategoryCompare] = useState(false);
   const nowYear = new Date().getFullYear();
 
   useEffect(function() {
@@ -936,7 +967,7 @@ function HomeTab({ expenses, allowance, allowanceType, allowanceUpdatedAt, user,
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4, flexWrap: "wrap", gap: 8 }}>
           <p className="card-title" style={{ margin: 0, fontSize: deptChartNarrow ? "0.95rem" : undefined }}>🏫 Department spending comparison</p>
         </div>
-        <div style={{ display: "flex", gap: deptChartNarrow ? 6 : 8, alignItems: "center", justifyContent: "center", flexWrap: deptChartNarrow ? "nowrap" : "wrap", marginBottom: 10 }}>
+        <div style={{ display: "flex", gap: deptChartNarrow ? 6 : 8, alignItems: "center", justifyContent: "center", flexWrap: deptChartNarrow ? "nowrap" : "wrap", marginTop: deptChartNarrow ? 10 : 14, marginBottom: 10 }}>
           <div style={{ display: "flex", background: "#f1f5f9", borderRadius: deptChartNarrow ? 9 : 10, padding: deptChartNarrow ? 2 : 3, gap: deptChartNarrow ? 2 : 3, maxWidth: "100%", flex: deptChartNarrow ? "1 1 60%" : "0 1 auto", minWidth: 0 }}>
             {[{ key: "uwian", label: "🏠 Uwian" }, { key: "boarding", label: "🏢 Boarding" }].map(function(t) {
               const isActive = deptStayType === t.key;
@@ -952,7 +983,7 @@ function HomeTab({ expenses, allowance, allowanceType, allowanceUpdatedAt, user,
           </div>
           <select value={deptPeriod} onChange={function(e) { setDeptPeriod(e.target.value); }}
             style={{
-              padding: deptChartNarrow ? "4px 24px 4px 8px" : "7px 12px",
+              padding: deptChartNarrow ? "4px 30px 4px 8px" : "7px 34px 7px 12px",
               borderRadius: deptChartNarrow ? 9 : 10,
               border: deptChartNarrow ? "1.5px solid #dbe5f1" : "2px solid #e2e8f0",
               fontFamily: "'Sora',sans-serif",
@@ -960,13 +991,11 @@ function HomeTab({ expenses, allowance, allowanceType, allowanceUpdatedAt, user,
               fontSize: deptChartNarrow ? "0.64rem" : "0.8rem",
               lineHeight: 1.2,
               color: "#0f172a",
-              background: deptChartNarrow
-                ? "#f8fafc url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='M5 7.5l5 5 5-5' stroke='%2364758b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\") no-repeat right 8px center"
-                : "#f8fafc",
-              backgroundSize: deptChartNarrow ? "10px 10px" : "auto",
-              appearance: deptChartNarrow ? "none" : "auto",
-              WebkitAppearance: deptChartNarrow ? "none" : "auto",
-              MozAppearance: deptChartNarrow ? "none" : "auto",
+              background: "#f8fafc url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='M5 7.5l5 5 5-5' stroke='%2364758b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\") no-repeat right 10px center",
+              backgroundSize: deptChartNarrow ? "10px 10px" : "11px 11px",
+              appearance: "none",
+              WebkitAppearance: "none",
+              MozAppearance: "none",
               cursor: "pointer",
               outline: "none",
               width: deptChartNarrow ? "40%" : "auto",
@@ -1570,26 +1599,33 @@ function AllowanceTab({ allowance, setAllowance, allowanceType, setAllowanceType
           <p className="card-title">📈 Line Chart</p>
           <ResponsiveContainer width="100%" height={210}>
             <LineChart data={chartData} margin={{ top: 10, right: 8, left: 2, bottom: 2 }}>
-              <defs>
-                <linearGradient id="allowanceFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#60a5fa" stopOpacity={0.22} />
-                  <stop offset="100%" stopColor="#60a5fa" stopOpacity={0.02} />
-                </linearGradient>
-                <linearGradient id="expensesFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#facc15" stopOpacity={0.22} />
-                  <stop offset="100%" stopColor="#facc15" stopOpacity={0.02} />
-                </linearGradient>
-              </defs>
               <CartesianGrid strokeDasharray="3 4" stroke="#e2e8f0" strokeOpacity={0.9} />
               <XAxis dataKey={xKey} tick={{ fontSize: 10, fill: "#64748b" }} axisLine={{ stroke: "#cbd5e1" }} tickLine={{ stroke: "#cbd5e1" }} />
               <YAxis tick={{ fontSize: 10, fill: "#64748b" }} axisLine={{ stroke: "#cbd5e1" }} tickLine={{ stroke: "#cbd5e1" }} tickFormatter={function(v) { return "₱" + Number(v || 0).toLocaleString(); }} />
               <Tooltip
-                formatter={function(v) { return "₱" + Number(v || 0).toLocaleString(); }}
+                content={function(tooltipProps) {
+                  var active = tooltipProps && tooltipProps.active;
+                  var payload = tooltipProps && tooltipProps.payload;
+                  var label = tooltipProps && tooltipProps.label;
+                  if (!active || !payload || !payload.length) return null;
+                  var uniqueByKey = {};
+                  payload.forEach(function(item) {
+                    if (!item || !item.dataKey) return;
+                    if (!uniqueByKey[item.dataKey]) uniqueByKey[item.dataKey] = item;
+                  });
+                  var allowItem = uniqueByKey.allowance;
+                  var expItem = uniqueByKey.expenses;
+                  return (
+                    <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 8px 24px rgba(15,23,42,0.12)", padding: "10px 12px" }}>
+                      <p style={{ margin: 0, fontWeight: 800, color: "#334155", textTransform: "lowercase" }}>{String(label || "")}</p>
+                      <p style={{ margin: "6px 0 0", color: "#60a5fa", fontWeight: 700 }}>Allowance: P {Number((allowItem && allowItem.value) || 0).toLocaleString()}</p>
+                      <p style={{ margin: "4px 0 0", color: "#facc15", fontWeight: 700 }}>Expenses: P {Number((expItem && expItem.value) || 0).toLocaleString()}</p>
+                    </div>
+                  );
+                }}
                 contentStyle={{ borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 8px 24px rgba(15,23,42,0.12)" }}
                 labelStyle={{ color: "#334155", fontWeight: 700 }}
               />
-              <Area type="monotone" dataKey="allowance" fill="url(#allowanceFill)" stroke="none" />
-              <Area type="monotone" dataKey="expenses" fill="url(#expensesFill)" stroke="none" />
               <Line
                 type="monotone"
                 dataKey="allowance"
@@ -1678,6 +1714,11 @@ function ProfileTab({ user, setUser, onLogout, onDeleteAccount, onUpdateProfile 
   const [deletePassword, setDeletePassword] = useState("");
   const [confirmSave, setConfirmSave] = useState(false);
   const [confirmRemovePhoto, setConfirmRemovePhoto] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [confirmReauth, setConfirmReauth] = useState(false);
+  const [reauthPassword, setReauthPassword] = useState("");
+  const [showReauthPassword, setShowReauthPassword] = useState(false);
+  const [pendingProfileUpdate, setPendingProfileUpdate] = useState(null);
 
   async function handlePhotoChange(e) {
     const file = e.target.files[0];
@@ -1725,12 +1766,57 @@ function ProfileTab({ user, setUser, onLogout, onDeleteAccount, onUpdateProfile 
 
   async function handleSave() {
     // Called directly by ConfirmModal
-    const updated = { name: form.name, age: Number(form.age), department: form.department };
+    const updated = {
+      name: form.name,
+      age: Number(form.age),
+      department: form.department,
+      password: form.password || ""
+    };
     try {
       await onUpdateProfile(updated);
       setToast({ msg: "Profile updated! ✅", type: "success" });
       setForm(function(prev) { return { ...prev, password: "" }; });
     } catch(e) { setToast({ msg: "Error: " + e.message, type: "error" }); }
+  }
+
+  async function submitProfileUpdate(updated) {
+    try {
+      await onUpdateProfile(updated);
+      setToast({ msg: "Profile updated! ✅", type: "success" });
+      setForm(function(p) { return { ...p, password: "" }; });
+      setPendingProfileUpdate(null);
+      setReauthPassword("");
+      setConfirmReauth(false);
+    } catch (e) {
+      var code = e && e.code ? String(e.code) : "";
+      var msg = e && e.message ? String(e.message) : "";
+      if (code === "auth/requires-recent-login" || /requires-recent-login/i.test(msg)) {
+        setPendingProfileUpdate(updated);
+        setReauthPassword("");
+        setConfirmReauth(true);
+        return;
+      }
+      if (code === "auth/wrong-password" || /wrong-password/i.test(msg)) {
+        setToast({ msg: "Incorrect current password. Please try again.", type: "error" });
+        return;
+      }
+      setToast({ msg: "Error: " + msg, type: "error" });
+    }
+  }
+
+  async function handleProfileForgotPassword() {
+    var email = (user && user.email ? String(user.email) : "").trim();
+    if (!email) { setToast({ msg: "No account email found.", type: "error" }); return; }
+    if (!isAllowedUserEmail(email)) {
+      setToast({ msg: "Invalid Email. Please use your institutional email ending with @mabinicolleges.edu.ph.", type: "error" });
+      return;
+    }
+    try {
+      await sendPasswordResetEmail(auth, email);
+      setToast({ msg: "Password reset link sent to " + email, type: "success" });
+    } catch (e) {
+      setToast({ msg: "Error: " + (e && e.message ? e.message : "Could not send reset email."), type: "error" });
+    }
   }
 
   return (
@@ -1792,8 +1878,29 @@ function ProfileTab({ user, setUser, onLogout, onDeleteAccount, onUpdateProfile 
             </select>
           </div>
           <div><label className="field-label">EMAIL (read-only)</label><input className="app-input" value={user.email} readOnly style={{ opacity: 0.6 }} /></div>
-          <div><label className="field-label">NEW PASSWORD</label><input className="app-input" type="password" placeholder="Leave blank to keep current" value={form.password} onChange={function(e) { setForm({ ...form, password: e.target.value }); }} /></div>
-          <button className="btn-primary" onClick={function() { if (!form.name || !form.age) { setToast({ msg: "Name and age required!", type: "error" }); return; } setConfirmSave(true); }}>Save Changes</button>
+          <div>
+            <label className="field-label">NEW PASSWORD</label>
+            <div style={{ position: "relative" }}>
+              <input className="app-input" type={showNewPassword ? "text" : "password"} name="new-password" autoComplete="new-password" placeholder="Leave blank to keep current" value={form.password} onChange={function(e) { setForm({ ...form, password: e.target.value }); }} style={{ paddingRight: 44 }} />
+              <button type="button" onClick={function() { setShowNewPassword(function(v) { return !v; }); }} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center" }}>
+                {showNewPassword ? (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                  </svg>
+                ) : (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                    <line x1="1" y1="1" x2="23" y2="23"/>
+                  </svg>
+                )}
+              </button>
+            </div>
+          </div>
+          <button type="button" onClick={handleProfileForgotPassword}
+            style={{ background: "none", border: "none", color: "#4A90D9", fontFamily: "'Sora',sans-serif", fontSize: "0.82rem", cursor: "pointer", width: "100%", textAlign: "left", textDecoration: "underline", padding: 0, marginTop: -2 }}>
+            Forgot Password?
+          </button>
+          <button className="btn-primary" onClick={function() { if (!form.name || !form.age) { setToast({ msg: "Name and age required!", type: "error" }); return; } setConfirmSave(true); }} style={{ marginTop: 10 }}>Save Changes</button>
         </div>
       </div>
 
@@ -1849,12 +1956,42 @@ function ProfileTab({ user, setUser, onLogout, onDeleteAccount, onUpdateProfile 
       <ConfirmModal show={confirmSave} title="Update Profile?" message="Do you want to save your profile changes?"
         yesLabel="Yes, Save" noLabel="Cancel" yesColor="#4A90D9"
         onYes={async function() {
-          const updated = { name: form.name, age: Number(form.age), department: form.department };
-          try { await onUpdateProfile(updated); setToast({ msg: "Profile updated! ✅", type: "success" }); setForm(function(p) { return { ...p, password: "" }; }); }
-          catch(e) { setToast({ msg: "Error: " + e.message, type: "error" }); }
+          const updated = { name: form.name, age: Number(form.age), department: form.department, password: form.password || "" };
+          await submitProfileUpdate(updated);
           setConfirmSave(false);
         }}
         onNo={function() { setConfirmSave(false); }} />
+      <ConfirmModal show={confirmReauth} title="Confirm Current Password" message="For security, please enter your current password to finish changing to the new password."
+        yesLabel="Confirm & Update" noLabel="Cancel" yesColor="#4A90D9"
+        onYes={async function() {
+          if (!reauthPassword) { setToast({ msg: "Please enter your current password.", type: "error" }); return; }
+          if (!pendingProfileUpdate) { setConfirmReauth(false); return; }
+          var retry = { ...pendingProfileUpdate, currentPassword: reauthPassword };
+          await submitProfileUpdate(retry);
+        }}
+        onNo={function() { setConfirmReauth(false); setReauthPassword(""); setShowReauthPassword(false); }}>
+        <div style={{ marginTop: -6, marginBottom: 8 }}>
+          <label className="field-label" style={{ color: "#64748b", marginBottom: 6 }}>Current Password</label>
+          <div style={{ position: "relative" }}>
+            <input className="app-input" type={showReauthPassword ? "text" : "password"} value={reauthPassword}
+              onChange={function(e) { setReauthPassword(e.target.value); }}
+              placeholder="Enter current password" autoFocus style={{ paddingRight: 44 }} />
+            <button type="button" onClick={function() { setShowReauthPassword(function(v) { return !v; }); }}
+              style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center" }}>
+              {showReauthPassword ? (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                </svg>
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                  <line x1="1" y1="1" x2="23" y2="23"/>
+                </svg>
+              )}
+            </button>
+          </div>
+        </div>
+      </ConfirmModal>
       <ConfirmModal show={confirmRemovePhoto} title="Remove Photo?" message="Are you sure you want to remove your profile photo?"
         yesLabel="Yes, Remove" noLabel="Cancel" yesColor="#e74c3c"
         onYes={async function() { await handleRemovePhoto(); setConfirmRemovePhoto(false); }}
@@ -2279,9 +2416,14 @@ export default function App() {
   // ── Update User Profile in Firestore ─────────────────────────
   async function handleUpdateProfile(updatedData) {
     if (!user) return;
+    const currentPassword = (updatedData && updatedData.currentPassword) ? String(updatedData.currentPassword) : "";
+    const nextPassword = (updatedData && updatedData.password) ? String(updatedData.password) : "";
+    const profileUpdates = { ...updatedData };
+    delete profileUpdates.currentPassword;
+    delete profileUpdates.password;
     const prevDept = user.department || "";
-    const nextDept = updatedData.department || prevDept;
-    await setDoc(doc(db, "users", user.uid), updatedData, { merge: true });
+    const nextDept = profileUpdates.department || prevDept;
+    await setDoc(doc(db, "users", user.uid), profileUpdates, { merge: true });
     // Keep department index in sync, but never block profile updates on index permission issues.
     try {
       if (prevDept && nextDept && prevDept !== nextDept) {
@@ -2291,12 +2433,12 @@ export default function App() {
       if (nextDept) {
         await setDoc(doc(db, "users", "departments"), {}, { merge: true });
         await setDoc(doc(db, "users", "departments", "Departments", nextDept), { name: nextDept }, { merge: true });
-        await setDoc(doc(db, "users", "departments", "Departments", nextDept, "users", user.uid), { ...user, ...updatedData, uid: user.uid }, { merge: true });
+        await setDoc(doc(db, "users", "departments", "Departments", nextDept, "users", user.uid), { ...user, ...profileUpdates, uid: user.uid }, { merge: true });
         await setDoc(doc(db, "allowances", "departments"), {}, { merge: true });
         await setDoc(doc(db, "allowances", "departments", "Departments", nextDept), { name: nextDept }, { merge: true });
         await setDoc(doc(db, "allowances", "departments", "Departments", nextDept, "users", user.uid), {
           uid: user.uid,
-          name: (updatedData.name != null ? updatedData.name : user.name) || "",
+          name: (profileUpdates.name != null ? profileUpdates.name : user.name) || "",
           email: user.email || "",
           department: nextDept,
           amount: allowance,
@@ -2309,7 +2451,37 @@ export default function App() {
     } catch (e) {
       console.warn("Department index sync skipped:", e && e.message ? e.message : e);
     }
-    setUser(function(prev) { return { ...prev, ...updatedData }; });
+    if (nextPassword) {
+      if (nextPassword.length < 6) throw new Error("Password must be at least 6 characters.");
+      if (!auth.currentUser) throw new Error("No logged-in user for password update.");
+      try {
+        await updatePassword(auth.currentUser, nextPassword);
+      } catch (e) {
+        if (e && e.code === "auth/requires-recent-login") {
+          if (!currentPassword) {
+            var reqErr = new Error("Recent login required.");
+            reqErr.code = "auth/requires-recent-login";
+            throw reqErr;
+          }
+          const emailForReauth = auth.currentUser.email || (user && user.email) || "";
+          if (!emailForReauth) throw new Error("Missing user email for reauthentication.");
+          await reauthenticateWithCredential(
+            auth.currentUser,
+            EmailAuthProvider.credential(emailForReauth, currentPassword)
+          );
+          await updatePassword(auth.currentUser, nextPassword);
+          return setUser(function(prev) { return { ...prev, ...profileUpdates }; });
+        }
+        if (e && e.code === "auth/wrong-password") {
+          var wrongErr = new Error("Current password is incorrect.");
+          wrongErr.code = "auth/wrong-password";
+          throw wrongErr;
+        }
+        throw e;
+      }
+    }
+
+    setUser(function(prev) { return { ...prev, ...profileUpdates }; });
   }
 
   const effectiveMonthly = allowanceType === "daily" ? allowance * 30 : allowanceType === "weekly" ? allowance * 4 : allowance;
@@ -2404,7 +2576,7 @@ export default function App() {
             <span style={{ color: "rgba(255,255,255,0.8)", fontSize: "0.85rem", fontWeight: 600 }}>Hi, {(user.name || user.email || "Student").split(" ")[0]}!</span>
           </div>
         </div>
-        <div style={{ flex: 1, padding: "20px 16px 100px", maxWidth: 900, margin: "0 auto", width: "100%" }}>
+        <div style={{ flex: 1, padding: "20px 16px 84px", maxWidth: 900, margin: "0 auto", width: "100%" }}>
           {expenseSyncError && (
             <div style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", borderRadius: 12, padding: "12px 14px", marginBottom: 16, fontSize: "0.88rem", lineHeight: 1.45 }}>
               <strong>Expenses sync:</strong> {expenseSyncError}
@@ -2418,7 +2590,7 @@ export default function App() {
           {tab === "allowance" && <AllowanceTab allowance={allowance} setAllowance={setAllowance} allowanceType={allowanceType} setAllowanceType={setAllowanceType} allowanceUpdatedAt={allowanceUpdatedAt} semester={semester} setSemester={setSemester} stayType={stayType} setStayType={setStayType} expenses={expenses} onSaveAllowance={handleSaveAllowance} allowanceHistory={allowanceHistory} />}
           {tab === "profile" && <ProfileTab user={user} setUser={setUser} onLogout={handleLogout} onDeleteAccount={handleDeleteAccount} onUpdateProfile={handleUpdateProfile} />}
         </div>
-        <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "#fff", borderTop: "1px solid #e2e8f0", display: "flex", justifyContent: "space-around", alignItems: "center", padding: "10px 14px 12px", boxShadow: "0 -4px 20px rgba(0,0,0,0.08)" }}>
+        <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "#fff", borderTop: "1px solid #e2e8f0", display: "flex", justifyContent: "space-around", alignItems: "center", padding: "6px 10px 7px", boxShadow: "0 -4px 20px rgba(0,0,0,0.08)" }}>
           {TABS.map(function(t) {
             const isActive = tab === t;
             return (
@@ -2430,23 +2602,23 @@ export default function App() {
                   flexDirection: "column",
                   alignItems: "center",
                   justifyContent: "center",
-                  gap: 4,
+                  gap: 2,
                   border: "none",
                   background: "transparent",
-                  padding: "6px 12px",
-                  minWidth: 64,
+                  padding: "4px 10px",
+                  minWidth: 58,
                   borderRadius: 12,
                   cursor: "pointer",
                   fontWeight: 700,
-                  fontSize: "0.82rem",
+                  fontSize: "0.76rem",
                   fontFamily: "'Sora',sans-serif",
                   transition: "all 0.2s",
                   lineHeight: 1,
                   color: isActive ? "#60a5fa" : "#000"
                 }}
               >
-                <div style={{ width: 46, height: 38, borderRadius: 19, display: "flex", alignItems: "center", justifyContent: "center", background: isActive ? "#dbeafe" : "transparent" }}>
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={isActive ? "#60a5fa" : "#000"} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                <div style={{ width: 40, height: 30, borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center", background: isActive ? "#dbeafe" : "transparent" }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={isActive ? "#60a5fa" : "#000"} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                     {t === "home" && <><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></>}
                     {t === "expenses" && <g transform="translate(-1 -1) scale(1.1)">
                       <rect x="3" y="11" width="18" height="9" rx="1.2" />
@@ -2464,8 +2636,8 @@ export default function App() {
                     {t === "profile" && <><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></>}
                   </svg>
                 </div>
-                <span style={{ color: isActive ? "#60a5fa" : "#000", fontWeight: 800 }}>{TAB_LABELS[t]}</span>
-                <div style={{ width: 42, height: 3, borderRadius: 3, background: isActive ? "#60a5fa" : "transparent", marginTop: 2 }} />
+                <span style={{ color: isActive ? "#60a5fa" : "#000", fontWeight: 800, fontSize: "0.72rem" }}>{TAB_LABELS[t]}</span>
+                <div style={{ width: 34, height: 2, borderRadius: 2, background: isActive ? "#60a5fa" : "transparent", marginTop: 1 }} />
               </button>
             );
           })}
