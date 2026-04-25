@@ -157,18 +157,178 @@ const GLOBAL_STYLES = `
   .nav-icon { font-size:20px; }
   .nav-label { font-size:0.68rem; font-weight:700; }
   .nav-btn.active .nav-label { color:#2563eb; }
-  .auth-input { width:100%; padding:13px 16px; border:2px solid rgba(255,255,255,0.1); border-radius:12px; background:rgba(255,255,255,0.06); color:#fff; font-family:'Sora',sans-serif; font-size:0.95rem; outline:none; transition:border 0.2s; }
-  .auth-input:focus { border-color:#4A90D9; background:rgba(74,144,217,0.08); }
-  .auth-input::placeholder { color:rgba(255,255,255,0.35); }
-  .auth-input option { color:#0f172a; background:#fff; font-family:'Sora',sans-serif; }
-  .auth-input::-ms-reveal { display:none; }
-  .auth-input::-ms-clear { display:none; }
-  .auth-input::-webkit-contacts-auto-fill-button { display:none; }
-  .auth-input::-webkit-credentials-auto-fill-button { display:none; }
-  .auth-btn { width:100%; padding:14px; border:none; border-radius:12px; background:linear-gradient(135deg,#4A90D9,#2563eb); color:#fff; font-family:'Sora',sans-serif; font-size:1rem; font-weight:700; cursor:pointer; transition:all 0.2s; animation:glowBlue 2s infinite; }
-  .auth-btn:hover { transform:translateY(-2px); }
-  .tab-link { background:none; border:none; color:rgba(255,255,255,0.5); font-family:'Sora',sans-serif; font-weight:600; cursor:pointer; font-size:0.9rem; padding:6px 12px; border-radius:8px; transition:all 0.2s; }
-  .tab-link.active { color:#4A90D9; background:rgba(74,144,217,0.12); }
+  /* ── Auth (Sign in / Sign up) ───────────────────────────────── */
+  .auth-page-root { min-height:100vh; min-height:100dvh; }
+  .auth-screen {
+    min-height:100vh; min-height:100dvh;
+    background: #f6efe1;
+    display:flex; align-items:center; justify-content:center;
+    padding: 24px 18px;
+    position:relative;
+    overflow:hidden;
+  }
+  .auth-hero {
+    position:absolute;
+    inset:0 0 auto 0;
+    height: 46vh;
+    min-height: 330px;
+    background: linear-gradient(180deg, #6f8cff 0%, #6a84f7 100%);
+    border-bottom-left-radius: 36px;
+    border-bottom-right-radius: 36px;
+    box-shadow: 0 18px 40px rgba(36, 70, 178, 0.22);
+    overflow:hidden;
+  }
+  /* light playful doodles like the reference */
+  .auth-hero:before {
+    content:"";
+    position:absolute;
+    inset: 0;
+    background:
+      radial-gradient(circle at 22% 18%, rgba(255,255,255,0.28) 0 2px, transparent 3px),
+      radial-gradient(circle at 78% 22%, rgba(255,255,255,0.24) 0 2px, transparent 3px),
+      radial-gradient(circle at 62% 40%, rgba(255,255,255,0.20) 0 2px, transparent 3px),
+      radial-gradient(circle at 14% 52%, rgba(255,255,255,0.16) 0 2px, transparent 3px),
+      linear-gradient(120deg, rgba(255,255,255,0.16), rgba(255,255,255,0) 60%),
+      linear-gradient(45deg, rgba(255,255,255,0.10), rgba(255,255,255,0) 55%);
+    opacity: 0.9;
+  }
+  .auth-hero:after {
+    content:"";
+    position:absolute;
+    left:-20%;
+    top: 26%;
+    width: 140%;
+    height: 240px;
+    background:
+      radial-gradient(ellipse at 30% 40%, rgba(255,255,255,0.14) 0 58%, transparent 62%),
+      radial-gradient(ellipse at 70% 60%, rgba(255,255,255,0.10) 0 62%, transparent 66%);
+    filter: blur(0.2px);
+    transform: rotate(-6deg);
+    opacity: 0.9;
+  }
+  .auth-card-wrap {
+    width: 100%;
+    max-width: 420px;
+    position:relative;
+    z-index: 2;
+    display:flex;
+    justify-content:center;
+  }
+  .auth-card-wrap.auth-card-wrap--login { max-width: 372px; }
+  /* Mobile-only: slimmer cards on any phone brand */
+  @media (max-width:768px) {
+    .auth-card-wrap { max-width: 360px; }
+    .auth-card-wrap.auth-card-wrap--login { max-width: 340px; }
+  }
+  .auth-card {
+    width: 100%;
+    background: rgba(255,255,255,0.92);
+    border-radius: 22px;
+    padding: 28px 22px 20px;
+    box-shadow: 0 26px 70px rgba(0,0,0,0.18);
+    border: 1px solid rgba(255,255,255,0.55);
+    animation: fadeUp 0.45s ease;
+  }
+  .auth-title {
+    text-align:center;
+    font-size: 2.05rem;
+    font-weight: 800;
+    color: #0f172a;
+    letter-spacing: -0.03em;
+    margin-bottom: 18px;
+  }
+  .auth-fields { display:flex; flex-direction:column; gap: 12px; }
+  .auth-form-input {
+    width:100%;
+    padding: 12px 8px;
+    border: none;
+    border-bottom: 1.5px solid #e5e7eb;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.55);
+    color: #0f172a;
+    font-family:'Sora',sans-serif;
+    font-size: 0.95rem;
+    font-weight: 600;
+    outline:none;
+    transition: border 0.18s ease, background 0.18s ease;
+  }
+  .auth-form-input:focus { border-bottom-color:#6a84f7; background:#fff; }
+  .auth-form-input::placeholder { color: #9ca3af; font-weight:600; }
+  .auth-form-input option { color:#0f172a; background:#fff; font-family:'Sora',sans-serif; }
+  .auth-form-input::-ms-reveal { display:none; }
+  .auth-form-input::-ms-clear { display:none; }
+  .auth-form-input::-webkit-contacts-auto-fill-button { display:none; }
+  .auth-form-input::-webkit-credentials-auto-fill-button { display:none; }
+  .auth-primary-btn {
+    width:100%;
+    margin-top: 26px;
+    padding: 14px 16px;
+    border:none;
+    border-radius: 999px;
+    background: linear-gradient(180deg,#6f8cff,#5f79f1);
+    color:#fff;
+    font-family:'Sora',sans-serif;
+    font-size: 1rem;
+    font-weight: 800;
+    cursor:pointer;
+    transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+    box-shadow: 0 10px 26px rgba(94, 120, 238, 0.35);
+  }
+  .auth-primary-btn:hover { transform: translateY(-1px); box-shadow: 0 14px 30px rgba(94, 120, 238, 0.42); }
+  .auth-primary-btn:active { transform: translateY(0); }
+  .auth-subtle-link {
+    width:100%;
+    background:none;
+    border:none;
+    color:#6a84f7;
+    font-family:'Sora',sans-serif;
+    font-size: 0.86rem;
+    font-weight: 700;
+    cursor:pointer;
+    text-align:center;
+    margin-top: 12px;
+  }
+  .auth-switch-row {
+    margin-top: 16px;
+    text-align:center;
+    font-size: 0.9rem;
+    color:#6b7280;
+    font-weight: 600;
+  }
+  .auth-switch-row button {
+    background:none;
+    border:none;
+    color:#6a84f7;
+    font-family:'Sora',sans-serif;
+    font-weight: 800;
+    cursor:pointer;
+    padding: 0 4px;
+  }
+  .auth-terms {
+    margin-top: 10px;
+    text-align:center;
+    font-size: 0.78rem;
+    color:#9ca3af;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+  @media (max-width:540px) {
+    /* mobile only: push sign up a little lower */
+    .auth-card-wrap.auth-card-wrap--register { margin-top: 18px; }
+  }
+
+
+  /* Forgot password modal keeps previous dark style */
+  .auth-modal-input { width:100%; padding:13px 16px; border:2px solid rgba(255,255,255,0.1); border-radius:12px; background:rgba(255,255,255,0.06); color:#fff; font-family:'Sora',sans-serif; font-size:0.95rem; outline:none; transition:border 0.2s; }
+  .auth-modal-input:focus { border-color:#4A90D9; background:rgba(74,144,217,0.08); }
+  .auth-modal-input::placeholder { color:rgba(255,255,255,0.35); }
+  .auth-modal-input option { color:#0f172a; background:#fff; font-family:'Sora',sans-serif; }
+  .auth-modal-input::-ms-reveal { display:none; }
+  .auth-modal-input::-ms-clear { display:none; }
+  .auth-modal-input::-webkit-contacts-auto-fill-button { display:none; }
+  .auth-modal-input::-webkit-credentials-auto-fill-button { display:none; }
+  .auth-modal-btn { width:100%; padding:14px; border:none; border-radius:12px; background:linear-gradient(135deg,#4A90D9,#2563eb); color:#fff; font-family:'Sora',sans-serif; font-size:1rem; font-weight:700; cursor:pointer; transition:all 0.2s; animation:glowBlue 2s infinite; }
+  .auth-modal-btn:hover { transform:translateY(-2px); }
   .period-btn { flex:1; padding:8px 0; border:none; border-radius:10px; font-family:'Sora',sans-serif; font-weight:700; font-size:0.82rem; cursor:pointer; transition:all 0.2s; }
   .allowance-type-head-row { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
   .allowance-type-head-row .card-title { margin-bottom:0 !important; }
@@ -194,7 +354,7 @@ const GLOBAL_STYLES = `
     .home-summary-secondary { display: contents; }
   }
   /* Auth: room below fields so mobile keyboard scroll doesn’t hide inputs */
-  .auth-page-root { min-height:100vh; min-height:100dvh; padding:20px; box-sizing:border-box; }
+  .auth-page-root { padding:20px; box-sizing:border-box; }
   @media (max-width:540px) {
     .auth-page-root {
       justify-content:flex-start !important;
@@ -521,88 +681,115 @@ function AuthPage({ onLogin }) {
   }
 
   return (
-    <div className="auth-page-root" style={{ background: "linear-gradient(135deg,#0f172a 0%,#1e3a5f 50%,#0f172a 100%)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <div className="auth-page-root">
       <style>{GLOBAL_STYLES}</style>
-      <div style={{ width: "100%", maxWidth: 440, opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(20px)", transition: "all 0.6s ease" }}>
-        <div style={{ textAlign: "center", marginBottom: 36, animation: "float 3s ease-in-out infinite" }}>
-          <div style={{ marginBottom: 10, display: "flex", justifyContent: "center", alignItems: "center" }}><img src={KB_LOGO} alt="KaBudget" style={{ width: 80, height: 80, borderRadius: "50%", objectFit: "cover", border: "3px solid rgba(255,255,255,0.3)", boxShadow: "0 4px 20px rgba(0,0,0,0.4)" }} /></div>
-          <h1 style={{ fontFamily: "'JetBrains Mono',monospace", color: "#fff", fontSize: "1.8rem", fontWeight: 700 }}>KaBudget</h1>
-          <p style={{ color: "rgba(255,255,255,0.45)", fontSize: "0.85rem", marginTop: 4 }}>Student Allowance and Expenses Monitoring System</p>
-        </div>
-        <div style={{ background: "rgba(255,255,255,0.04)", backdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 24, padding: 36 }}>
-          <div style={{ display: "flex", gap: 8, marginBottom: 28, background: "rgba(0,0,0,0.2)", borderRadius: 12, padding: 4 }}>
-            <button className={"tab-link" + (mode === "login" ? " active" : "")} style={{ flex: 1 }} onClick={function() { setMode("login"); setShowConfirmLogin(false); setShowConfirm(false); }}>Log In</button>
-            <button className={"tab-link" + (mode === "register" ? " active" : "")} style={{ flex: 1 }} onClick={function() { setMode("register"); setShowConfirmLogin(false); setShowConfirm(false); }}>Register</button>
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {mode === "register" && (<>
-              <input ref={regNameRef} className="auth-input auth-input-scroll" placeholder="Full Name" value={form.name} onChange={function(e) { setForm({ ...form, name: e.target.value }); }}
+      <div className="auth-screen">
+        <div className="auth-hero" aria-hidden="true" />
+
+        <div className={"auth-card-wrap " + (mode === "login" ? "auth-card-wrap--login" : "auth-card-wrap--register")} style={{ opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(18px)", transition: "all 0.55s ease" }}>
+          <div className="auth-card">
+            <div className="auth-title">{mode === "login" ? "Sign in" : "Sign up"}</div>
+
+            <div className="auth-fields">
+              {mode === "register" && (<>
+                <input ref={regNameRef} className="auth-form-input auth-input-scroll" placeholder="Full Name" value={form.name} onChange={function(e) { setForm({ ...form, name: e.target.value }); }}
+                  onFocus={scrollAuthFieldIntoView}
+                  onKeyDown={function(e) { if (e.key === "Enter") { e.preventDefault(); regAgeRef.current && regAgeRef.current.focus(); }}}
+                />
+                <input ref={regAgeRef} className="auth-form-input auth-input-scroll" placeholder="Age" type="number" value={form.age} onChange={function(e) { setForm({ ...form, age: e.target.value }); }}
+                  onFocus={scrollAuthFieldIntoView}
+                  onKeyDown={function(e) { if (e.key === "Enter") { e.preventDefault(); regDeptRef.current && regDeptRef.current.focus(); }}}
+                />
+                <select ref={regDeptRef} className="auth-form-input auth-input-scroll" value={form.department} onChange={function(e) {
+                  var v = e.target.value;
+                  setForm({ ...form, department: v });
+                  if (v) setTimeout(function() {
+                    if (authEmailRef.current) {
+                      authEmailRef.current.focus();
+                      authEmailRef.current.scrollIntoView({ block: "center", behavior: "smooth" });
+                    }
+                  }, 120);
+                }} onFocus={scrollAuthFieldIntoView} onKeyDown={function(e) { if (e.key === "Enter") { e.preventDefault(); authEmailRef.current && authEmailRef.current.focus(); }}}
+                  style={{ cursor: "pointer" }}>
+                  <option value="" disabled>Select Department</option>
+                  <option value="CCS">CCS – College of Computer Studies</option>
+                  <option value="CE">CE – College of Education</option>
+                  <option value="CCJE">CCJE – College of Criminal Justice Education</option>
+                  <option value="CN">CN – College of Nursing</option>
+                  <option value="CBAA">CBAA – College of Business Administration and Accountancy</option>
+                  <option value="CLA">CLA - College of Liberal Arts</option>
+                  <option value="HSD">High School Department</option>
+                </select>
+              </>)}
+
+              <input ref={authEmailRef} className="auth-form-input auth-input-scroll" placeholder="Email" type="email" value={form.email} onChange={function(e) { setForm({ ...form, email: e.target.value }); }}
                 onFocus={scrollAuthFieldIntoView}
-                onKeyDown={function(e) { if (e.key === "Enter") { e.preventDefault(); regAgeRef.current && regAgeRef.current.focus(); }}}
+                onKeyDown={function(e) { if (e.key === "Enter") { e.preventDefault(); authPasswordRef.current && authPasswordRef.current.focus(); }}}
               />
-              <input ref={regAgeRef} className="auth-input auth-input-scroll" placeholder="Age" type="number" value={form.age} onChange={function(e) { setForm({ ...form, age: e.target.value }); }}
-                onFocus={scrollAuthFieldIntoView}
-                onKeyDown={function(e) { if (e.key === "Enter") { e.preventDefault(); regDeptRef.current && regDeptRef.current.focus(); }}}
-              />
-              <select ref={regDeptRef} className="auth-input auth-input-scroll" value={form.department} onChange={function(e) {
-                var v = e.target.value;
-                setForm({ ...form, department: v });
-                if (v) setTimeout(function() {
-                  if (authEmailRef.current) {
-                    authEmailRef.current.focus();
-                    authEmailRef.current.scrollIntoView({ block: "center", behavior: "smooth" });
-                  }
-                }, 120);
-              }} onFocus={scrollAuthFieldIntoView} onKeyDown={function(e) { if (e.key === "Enter") { e.preventDefault(); authEmailRef.current && authEmailRef.current.focus(); }}}
-                style={{ cursor: "pointer" }}>
-                <option value="" disabled>Select Department</option>
-                <option value="CCS">CCS – College of Computer Studies</option>
-                <option value="CE">CE – College of Education</option>
-                <option value="CCJE">CCJE – College of Criminal Justice Education</option>
-                <option value="CN">CN – College of Nursing</option>
-                <option value="CBAA">CBAA – College of Business Administration and Accountancy</option>
-                <option value="CLA">CLA - College of Liberal Arts</option>
-                <option value="HSD">High School Department</option>
-              </select>
-            </>)}
-            <input ref={authEmailRef} className="auth-input auth-input-scroll" placeholder="Email Address" type="email" value={form.email} onChange={function(e) { setForm({ ...form, email: e.target.value }); }}
-              onFocus={scrollAuthFieldIntoView}
-              onKeyDown={function(e) { if (e.key === "Enter") { e.preventDefault(); authPasswordRef.current && authPasswordRef.current.focus(); }}}
-            />
-            <div style={{ position: "relative" }}>
-              <input ref={authPasswordRef} className="auth-input auth-input-scroll" placeholder="Password"
-                type={showPassword ? "text" : "password"}
-                value={form.password}
-                onChange={function(e) { setForm({ ...form, password: e.target.value }); }}
-                onFocus={scrollAuthFieldIntoView}
-                onKeyDown={function(e) { if (e.key === "Enter") { e.preventDefault(); handleSubmit(); }}}
-                style={{ paddingRight: 48 }} />
-              <button type="button" onClick={function() { setShowPassword(function(p) { return !p; }); }}
-                style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center" }}>
-                {showPassword ? (
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-                  </svg>
-                ) : (
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
-                    <line x1="1" y1="1" x2="23" y2="23"/>
-                  </svg>
-                )}
-              </button>
+
+              <div style={{ position: "relative" }}>
+                <input ref={authPasswordRef} className="auth-form-input auth-input-scroll" placeholder="Password"
+                  type={showPassword ? "text" : "password"}
+                  value={form.password}
+                  onChange={function(e) { setForm({ ...form, password: e.target.value }); }}
+                  onFocus={scrollAuthFieldIntoView}
+                  onKeyDown={function(e) { if (e.key === "Enter") { e.preventDefault(); handleSubmit(); }}}
+                  style={{ paddingRight: 46 }} />
+                <button type="button" onClick={function() { setShowPassword(function(p) { return !p; }); }}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", padding: 6, display: "flex", alignItems: "center" }}>
+                  {showPassword ? (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111827" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                    </svg>
+                  ) : (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111827" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                      <line x1="1" y1="1" x2="23" y2="23"/>
+                    </svg>
+                  )}
+                </button>
+              </div>
             </div>
-            <button className="auth-btn" onClick={handleSubmit}>{mode === "login" ? "Log In →" : "Create Account"}</button>
+
+            <button className="auth-primary-btn" onClick={handleSubmit}>
+              {mode === "login" ? "Sign In" : "Sign Up"}
+            </button>
+
+            {mode === "register" && (
+              <div className="auth-terms">
+                By clicking this button, you agree with our <span style={{ color: "#6a84f7", fontWeight: 800 }}>Terms and Conditions</span>
+              </div>
+            )}
+
             {mode === "login" && (
-              <button type="button" onClick={function() {
+              <button type="button" className="auth-subtle-link" onClick={function() {
                 var prefill = (form.email || "").trim();
                 setFpStep(1);
                 setFpSent(false);
                 setFpEmail(prefill);
-              }}
-                style={{ background: "none", border: "none", color: "rgba(255,255,255,0.45)", fontFamily: "'Sora',sans-serif", fontSize: "0.82rem", cursor: "pointer", marginTop: 8, width: "100%", textAlign: "center", textDecoration: "underline" }}>
-                Forgot Password?
+              }}>
+                Forgot your password?
               </button>
             )}
+
+            <div className="auth-switch-row">
+              {mode === "login" ? (
+                <>
+                  Don&apos;t have an account?{" "}
+                  <button type="button" onClick={function() { setMode("register"); setShowConfirmLogin(false); setShowConfirm(false); }}>
+                    Sign up
+                  </button>
+                </>
+              ) : (
+                <>
+                  Already have an account?{" "}
+                  <button type="button" onClick={function() { setMode("login"); setShowConfirmLogin(false); setShowConfirm(false); }}>
+                    Sign in
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -623,11 +810,11 @@ function AuthPage({ onLogin }) {
               </p>
             </div>
             {!fpSent && (<>
-              <input className="auth-input" placeholder="Input Email Address" type="email"
+              <input className="auth-modal-input" placeholder="Input Email Address" type="email"
                 value={fpEmail} onChange={function(e) { setFpEmail(e.target.value); }}
                 onKeyDown={function(e) { if (e.key === "Enter") handleForgotSendEmail(); }}
                 style={{ marginBottom: 14 }} />
-              <button className="auth-btn" onClick={handleForgotSendEmail} style={{ marginBottom: 10, opacity: fpLoading ? 0.7 : 1 }} disabled={fpLoading}>
+              <button className="auth-modal-btn" onClick={handleForgotSendEmail} style={{ marginBottom: 10, opacity: fpLoading ? 0.7 : 1 }} disabled={fpLoading}>
                 {fpLoading ? "Sending..." : "Send Reset Link →"}
               </button>
             </>)}
