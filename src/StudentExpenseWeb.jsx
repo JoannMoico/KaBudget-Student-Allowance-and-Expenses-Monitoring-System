@@ -214,7 +214,7 @@ const GLOBAL_STYLES = `
     display:flex;
     justify-content:center;
   }
-  .auth-card-wrap.auth-card-wrap--login { max-width: 372px; }
+  .auth-card-wrap.auth-card-wrap--login { max-width: 402px; }
   /* Mobile-only: slimmer cards on any phone brand */
   @media (max-width:768px) {
     .auth-card-wrap { max-width: 360px; }
@@ -353,18 +353,22 @@ const GLOBAL_STYLES = `
     .home-summary-grid { grid-template-columns: repeat(3, minmax(220px, 1fr)); align-items: stretch; }
     .home-summary-secondary { display: contents; }
   }
-  /* Auth: room below fields so mobile keyboard scroll doesn’t hide inputs */
-  .auth-page-root { padding:20px; box-sizing:border-box; }
+  /* Auth: default centered; add extra room only while keyboard/input is active */
+  .auth-page-root { padding:0; box-sizing:border-box; }
   @media (max-width:540px) {
-    .auth-page-root {
-      justify-content:flex-start !important;
-      align-items:center;
-      padding:16px 20px min(42vh,320px);
+    .auth-screen { padding:16px 20px; }
+    .auth-screen:focus-within {
+      justify-content:center;
+      padding:16px 20px;
       overflow-y:auto;
       overflow-x:hidden;
       -webkit-overflow-scrolling:touch;
     }
     .auth-input-scroll { scroll-margin-bottom:min(38vh,280px); }
+  }
+  @media (max-width:540px) and (max-height:740px) {
+    .auth-screen { padding:12px 16px; }
+    .auth-hero { height: 38vh; min-height: 260px; }
   }
 `;
 
@@ -705,8 +709,13 @@ function AuthPage({ onLogin }) {
                   setForm({ ...form, department: v });
                   if (v) setTimeout(function() {
                     if (authEmailRef.current) {
-                      authEmailRef.current.focus();
-                      authEmailRef.current.scrollIntoView({ block: "center", behavior: "smooth" });
+                      if (typeof authEmailRef.current.focus === "function") {
+                        try {
+                          authEmailRef.current.focus({ preventScroll: true });
+                        } catch (focusErr) {
+                          authEmailRef.current.focus();
+                        }
+                      }
                     }
                   }, 120);
                 }} onFocus={scrollAuthFieldIntoView} onKeyDown={function(e) { if (e.key === "Enter") { e.preventDefault(); authEmailRef.current && authEmailRef.current.focus(); }}}
