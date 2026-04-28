@@ -373,8 +373,28 @@ const GLOBAL_STYLES = `
 `;
 
 function formatDate(d) {
-  const dt = new Date(d);
+  if (!d) return "—";
+  const value = String(d);
+  var dt;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const parts = value.split("-");
+    dt = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+  } else {
+    dt = new Date(value);
+  }
+  if (isNaN(dt.getTime())) return "—";
   return dt.toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function localDateToTimestamp(dateStr) {
+  if (!dateStr) return 0;
+  var value = String(dateStr);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    var parts = value.split("-");
+    return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 12, 0, 0).getTime();
+  }
+  var dt = new Date(value);
+  return isNaN(dt.getTime()) ? 0 : dt.getTime();
 }
 
 function isAllowedUserEmail(rawEmail) {
@@ -1331,7 +1351,7 @@ function ExpensesTab({ expenses, stayType, onAddExpense, onUpdateExpense, onDele
     const d = String(now.getDate()).padStart(2,"0");
     const todayLocal = y + "-" + m + "-" + d;
 
-    return expenses.filter(function(e) {
+    const results = expenses.slice().filter(function(e) {
       const expDate = expenseCalendarDateStr(e);
       const expDateObj = expDate ? new Date(expDate + "T12:00:00") : new Date(0);
       if (period === "daily") return expDate === todayLocal;
@@ -1340,6 +1360,16 @@ function ExpensesTab({ expenses, stayType, onAddExpense, onUpdateExpense, onDele
       if (period === "yearly") return expDateObj.getFullYear() === now.getFullYear();
       return true;
     });
+
+    results.sort(function(a, b) {
+      const aDate = expenseCalendarDateStr(a);
+      const bDate = expenseCalendarDateStr(b);
+      const aTime = aDate ? localDateToTimestamp(aDate) : new Date(a.timestamp || 0).getTime();
+      const bTime = bDate ? localDateToTimestamp(bDate) : new Date(b.timestamp || 0).getTime();
+      if (aTime !== bTime) return bTime - aTime;
+      return new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime();
+    });
+    return results;
   }, [expenses, period]);
 
   const categoryOptions = (stayType === "boarding") ? CATEGORIES : CATEGORIES.filter(function(c) { return c !== "Boarding"; });
@@ -1378,6 +1408,11 @@ function ExpensesTab({ expenses, stayType, onAddExpense, onUpdateExpense, onDele
 
   function handleSave() {
     if (!form.amount || isNaN(form.amount) || Number(form.amount) <= 0) { setToast({ msg: "Enter a valid amount!", type: "error" }); return; }
+    var today = localDateYYYYMMDD(new Date());
+    if (form.date && String(form.date) > today) {
+      setToast({ msg: "Future expenses are not allowed.", type: "error" });
+      return;
+    }
     if (editId) { setConfirmUpdate(true); } // ask confirm before update
     else { setConfirmCreate(true); } // ask confirm before create
   }
@@ -1492,7 +1527,7 @@ function ExpensesTab({ expenses, stayType, onAddExpense, onUpdateExpense, onDele
         </div>
       )}
       <div className="card">
-        <p className="card-title">🧾 Expense Table ({filtered.length} entries)</p>
+        <p className="card-title">🧾 Expenses Table ({filtered.length} {filtered.length > 1 ? "Entries" : "entry"})</p>
         {filtered.length === 0 ? <p style={{ textAlign: "center", color: "#94a3b8", padding: "20px 0" }}>No expenses for this period.</p> : (
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.88rem" }}>
@@ -1509,9 +1544,12 @@ function ExpensesTab({ expenses, stayType, onAddExpense, onUpdateExpense, onDele
                       <td style={{ padding: "10px 12px", fontWeight: 800, color: "#0f172a" }}>₱{exp.amount.toLocaleString()}</td>
                       <td style={{ padding: "10px 12px", color: "#94a3b8" }}>{exp.note || "—"}</td>
                       <td style={{ padding: "10px 12px" }}>
-                        <div style={{ display: "flex", gap: 6 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <button onClick={function() { handleEdit(exp); }} style={{ background: "#e0f2fe", color: "#4A90D9", border: "none", borderRadius: 8, padding: "5px 12px", fontWeight: 700, cursor: "pointer", fontSize: "0.8rem" }}>Edit</button>
                           <button onClick={function() { handleDelete(exp.id); }} style={{ background: "#fee2e2", color: "#e74c3c", border: "none", borderRadius: 8, padding: "5px 12px", fontWeight: 700, cursor: "pointer", fontSize: "0.8rem" }}>Del</button>
+                          {exp.createdAt && exp.timestamp && exp.timestamp !== exp.createdAt ? (
+                            <span style={{ display: "inline-flex", alignItems: "center", padding: "4px 8px", borderRadius: 999, background: "#e0f2fe", color: "#2563eb", fontSize: "0.75rem", fontWeight: 700 }}>Edited</span>
+                          ) : null}
                         </div>
                       </td>
                     </tr>
@@ -2516,12 +2554,14 @@ export default function App() {
       String(now.getDate()).padStart(2,"0");
     const dept = user.department || "Other";
     const st = stayType || "uwian";
+    const isoNow = new Date().toISOString();
     const expenseDoc = {
       amount: Number(expenseData.amount),
       category: expenseData.category,
       note: expenseData.note || "",
       date: expenseData.date || localDate,
-      timestamp: new Date().toISOString(),
+      timestamp: isoNow,
+      createdAt: isoNow,
       department: dept,
       stayType: st
     };
@@ -2557,29 +2597,35 @@ export default function App() {
       String(now.getDate()).padStart(2,"0");
     const dept = user.department || "Other";
     const st = stayType || "uwian";
-    const expenseUpdate = {
-      amount: Number(expenseData.amount),
-      category: expenseData.category,
-      note: expenseData.note || "",
-      date: expenseData.date || localDate,
-      timestamp: new Date().toISOString(),
-      department: dept,
-      stayType: st
-    };
-    console.log("Updating expense at path: expenses/" + user.uid + "/records/" + id, expenseUpdate);
+    var prevCreatedAt = null;
+    console.log("Updating expense at path: expenses/" + user.uid + "/records/" + id);
     try {
       // Read previous values so we can move the mirrored doc if category/department changes.
       var prevDept = dept;
-      var prevCategory = expenseUpdate.category;
+      var prevCategory = expenseData.category;
       try {
         var prevSnap = await getDoc(doc(db, "expenses", user.uid, "records", id));
         if (prevSnap.exists()) {
           var prevData = prevSnap.data();
           if (prevData && prevData.department) prevDept = prevData.department;
           if (prevData && prevData.category) prevCategory = prevData.category;
+          if (prevData) prevCreatedAt = prevData.createdAt || prevData.timestamp || null;
         }
       } catch (e2) {}
 
+      const expenseUpdate = {
+        amount: Number(expenseData.amount),
+        category: expenseData.category,
+        note: expenseData.note || "",
+        date: expenseData.date || localDate,
+        timestamp: new Date().toISOString(),
+        department: dept,
+        stayType: st
+      };
+      if (prevCreatedAt) {
+        expenseUpdate.createdAt = prevCreatedAt;
+      }
+      console.log("Updating expense data:", expenseUpdate);
       await updateDoc(doc(db, "expenses", user.uid, "records", id), expenseUpdate);
       console.log("Expense updated");
 
