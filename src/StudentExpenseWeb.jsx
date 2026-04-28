@@ -982,7 +982,7 @@ function HomeTab({ expenses, allowance, allowanceType, allowanceUpdatedAt, user,
     { key: "Transport", fill: "#8B5CF6", name: "Transport" },
     { key: "Other", fill: "#F97316", name: "Other" },
     ...(deptStayType === "boarding" ? [{ key: "Boarding", fill: "#22C55E", name: "Boarding" }] : []),
-    { key: "School", fill: "#FACC15", name: "School (highlight)", stroke: "#1e3a8a", strokeWidth: 2 }
+    { key: "School", fill: "#FACC15", name: "School" }
   ];
 
   const catData = CATEGORIES.map(function(c, i) {
@@ -1232,7 +1232,7 @@ function HomeTab({ expenses, allowance, allowanceType, allowanceUpdatedAt, user,
           </select>
         </div>
         <p style={{ fontSize: deptChartNarrow ? "0.68rem" : "0.73rem", color: "#94a3b8", marginBottom: 6, textAlign: "center", lineHeight: 1.45, padding: "0 4px" }}>
-          {deptPeriodLabel} · Each column is one month: categories stack in pesos (Food, Transport, Other{deptStayType === "boarding" ? ", Boarding in green" : ""}, then <strong style={{ color: "#ca8a04" }}>School</strong> on top with a bold outline). Only students matching <strong>{deptStayType === "uwian" ? "Uwian" : "Boarding"}</strong> are included.
+          {deptPeriodLabel} · Each column is one month: categories stack in pesos (Food, Transport, Other{deptStayType === "boarding" ? ", Boarding in green" : ""}, then <strong style={{ color: "#ca8a04" }}>School</strong> on top). Only students matching <strong>{deptStayType === "uwian" ? "Uwian" : "Boarding"}</strong> are included.
         </p>
         <p style={{ fontSize: deptChartNarrow ? "0.64rem" : "0.68rem", color: "#94a3b8", marginBottom: 10, textAlign: "center", lineHeight: 1.45, padding: "0 4px" }}>
           Tap the chart for department shares: each line is that department&apos;s % of <strong>all</strong> spending in that month (not per category).
