@@ -1177,13 +1177,23 @@ function HomeTab({ expenses, allowance, allowanceType, allowanceUpdatedAt, user,
     } else {
       tips.push({ icon: "✅", color: "#4CAF50", bg: "#f0fdf4", text: "You are doing well! You have used " + Math.round(pct) + "% of your budget so far " + budgetPeriodPhrase + ". Keep going!" });
     }
+    let topIsFood60 = false;
     if (topCategory && total > 0) {
       const topPct = Math.round((topCategory.value / total) * 100);
-      if (topPct >= 50) {
-        tips.push({ icon: "📌", color: "#FF6B35", bg: "#fff7f5", text: topCategory.name + " takes up " + topPct + "% of your total spending. Try to find ways to spend less on " + topCategory.name.toLowerCase() + "." });
+      topIsFood60 = (topCategory.name === "Food" && topPct >= 60);
+      if (topIsFood60) {
+        tips.push({ icon: "🍱", color: "#FF6B35", bg: "#fff7f5", text: "Try to pack meals to lessen the food expenses." });
+      } else if (topPct >= 50) {
+        if (topCategory.name === "Food") {
+          tips.push({ icon: "🍱", color: "#FF6B35", bg: "#fff7f5", text: "Food is a large part of your spending — try packing lunch to save money." });
+        } else if (topCategory.name === "Transport") {
+          tips.push({ icon: "🚲", color: "#4A90D9", bg: "#e0f2fe", text: "Transport takes up much of your spending — try walking for very short trips or ride a bike to save." });
+        } else {
+          tips.push({ icon: "📌", color: "#FF6B35", bg: "#fff7f5", text: topCategory.name + " takes up " + topPct + "% of your total spending. Try to find ways to spend less on " + topCategory.name.toLowerCase() + "." });
+        }
       }
     }
-    if (foodTotal > 0 && effectiveAllowance > 0 && (foodTotal / effectiveAllowance) > 0.5) {
+    if (!topIsFood60 && foodTotal > 0 && effectiveAllowance > 0 && (foodTotal / effectiveAllowance) > 0.5) {
       tips.push({ icon: "🍱", color: "#FF6B35", bg: "#fff7f5", text: "You are spending more than half of your allowance on food. Try bringing packed lunch to save more!" });
     }
     if (transportTotal > 0 && effectiveAllowance > 0 && (transportTotal / effectiveAllowance) > 0.3) {
