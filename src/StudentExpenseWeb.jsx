@@ -37,7 +37,14 @@ function localDateYYYYMMDD(d) {
 /** Prefer stored date field; otherwise derive local date from ISO timestamp. */
 function expenseCalendarDateStr(e) {
   if (e.date && /^\d{4}-\d{2}-\d{2}$/.test(String(e.date))) return String(e.date);
-  if (e.timestamp) return localDateYYYYMMDD(new Date(e.timestamp));
+  if (e.timestamp) {
+    const dt = parseFirestoreDateValue(e.timestamp);
+    if (dt) return localDateYYYYMMDD(dt);
+  }
+  if (e.date) {
+    const dt = parseFirestoreDateValue(e.date);
+    if (dt) return localDateYYYYMMDD(dt);
+  }
   return "";
 }
 
@@ -397,6 +404,116 @@ function localDateToTimestamp(dateStr) {
   return isNaN(dt.getTime()) ? 0 : dt.getTime();
 }
 
+function parseFirestoreDateValue(value) {
+  if (value == null) return null;
+  if (typeof value === "string" || typeof value === "number") {
+    const dt = new Date(value);
+    return isNaN(dt.getTime()) ? null : dt;
+  }
+  if (value instanceof Date) {
+    return isNaN(value.getTime()) ? null : value;
+  }
+  if (typeof value.toDate === "function") {
+    const dt = value.toDate();
+    return isNaN(dt.getTime()) ? null : dt;
+  }
+  if (typeof value.seconds === "number") {
+    const millis = value.seconds * 1000 + (typeof value.nanoseconds === "number" ? Math.floor(value.nanoseconds / 1000000) : 0);
+    const dt = new Date(millis);
+    return isNaN(dt.getTime()) ? null : dt;
+  }
+  return null;
+}
+
+async function fetchExpensesForUser(uid, department) {
+  if (!uid) return [];
+  try {
+    const rootSnap = await getDocs(collection(db, "expenses", uid, "records"));
+    if (rootSnap && rootSnap.size > 0) {
+      return rootSnap.docs.map(function(d) { return { id: d.id, ...d.data() }; });
+    }
+  } catch (e) {
+    console.warn("fetchExpensesForUser root query failed:", e && e.message ? e.message : e);
+  }
+
+  if (!department) return [];
+  var allExpenses = [];
+  const categories = ["Food", "Transport", "School", "Other", "Boarding"];
+  for (var i = 0; i < categories.length; i++) {
+    var cat = categories[i];
+    try {
+      const catSnap = await getDocs(collection(db, "expenses", "departments", "Departments", department, "users", uid, cat));
+      catSnap.docs.forEach(function(d) {
+        allExpenses.push({ id: d.id, category: cat, ...d.data() });
+      });
+    } catch (e) {
+      // Continue fetching other categories even if one fails.
+      console.warn("fetchExpensesForUser fallback category failed:", department, uid, cat, e && e.message ? e.message : e);
+    }
+  }
+  return allExpenses;
+}
+
+async function loadUserProfileFromDepartmentIndex(uid) {
+  const deptIndexSnap = await getDocs(collection(db, "users", "departments", "Departments"));
+  for (const deptDoc of deptIndexSnap.docs) {
+    try {
+      const userSnap = await getDoc(doc(db, "users", "departments", "Departments", deptDoc.id, "users", uid));
+      if (userSnap.exists()) {
+        return { uid: uid, ...userSnap.data() };
+      }
+    } catch (e) {
+      console.warn("loadUserProfileFromDepartmentIndex failed for", uid, deptDoc.id, e && e.message ? e.message : e);
+    }
+  }
+  return null;
+}
+
+async function resolveDepartmentForUser(uid) {
+  if (!uid) return "";
+  try {
+    const userSnap = await getDoc(doc(db, "users", uid));
+    if (userSnap.exists()) {
+      const d = (userSnap.data() || {}).department;
+      if (d) return d;
+    }
+  } catch (e) {
+    // Ignore; fallback to department index scan below.
+  }
+  try {
+    const deptIndexSnap = await getDocs(collection(db, "users", "departments", "Departments"));
+    for (const deptDoc of deptIndexSnap.docs) {
+      try {
+        const deptUserSnap = await getDoc(doc(db, "users", "departments", "Departments", deptDoc.id, "users", uid));
+        if (deptUserSnap.exists()) return deptDoc.id;
+      } catch (e2) {
+        // Continue scanning.
+      }
+    }
+  } catch (e3) {
+    // Ignore.
+  }
+  return "";
+}
+
+async function ensureExpenseDepartmentUserDoc(dept, uid, userData) {
+  if (!dept || !uid) return;
+  try {
+    await setDoc(
+      doc(db, "expenses", "departments", "Departments", dept, "users", uid),
+      {
+        uid: uid,
+        department: dept,
+        email: (userData && userData.email) || "",
+        name: (userData && userData.name) || ""
+      },
+      { merge: true }
+    );
+  } catch (e) {
+    // Ignore; some rules may block creating this metadata doc.
+  }
+}
+
 function isAllowedUserEmail(rawEmail) {
   var email = String(rawEmail || "").trim().toLowerCase();
   var basicEmailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -747,6 +864,7 @@ function AuthPage({ onLogin }) {
                   <option value="CN">CN – College of Nursing</option>
                   <option value="CBAA">CBAA – College of Business Administration and Accountancy</option>
                   <option value="CLA">CLA - College of Liberal Arts</option>
+                  <option value="Documents">Documents Department</option>
                   <option value="HSD">High School Department</option>
                 </select>
               </>)}
@@ -880,8 +998,8 @@ function AuthPage({ onLogin }) {
   );
 }
 
-const DEPARTMENTS = ["CCS","CE","CCJE","CN","CBAA","CLA","HSD"];
-const DEPT_COLORS = ["#1a6b3c","#2563eb","#7b1c1c","#e67e22","#f5c518","#7c3aed","#e74c3c"];
+const DEPARTMENTS = ["CCS","CE","CCJE","CN","CBAA","CLA","HSD","Documents"];
+const DEPT_COLORS = ["#1a6b3c","#2563eb","#7b1c1c","#e67e22","#f5c518","#7c3aed","#e74c3c","#10b981"];
 
 function HomeTab({ expenses, allowance, allowanceType, allowanceUpdatedAt, user, allUsersExpenses, semester, stayType }) {
   // Compute effective allowance based on type
@@ -914,6 +1032,7 @@ function HomeTab({ expenses, allowance, allowanceType, allowanceUpdatedAt, user,
   const [deptChartNarrow, setDeptChartNarrow] = useState(typeof window !== "undefined" ? window.innerWidth < 520 : false);
   const [showCategoryCompare, setShowCategoryCompare] = useState(false);
   const nowYear = new Date().getFullYear();
+  const deptChartDepartments = DEPARTMENTS.filter(function(d) { return d !== "Documents"; });
 
   useEffect(function() {
     if (semester === "firstsem" || semester === "secondsem") {
@@ -944,7 +1063,7 @@ function HomeTab({ expenses, allowance, allowanceType, allowanceUpdatedAt, user,
   // Only include users whose allowance stayType (Uwian vs Boarding) matches the chart toggle
   const allUsersForDeptChart = useMemo(function() {
     return (allUsersExpenses || []).filter(function(u) {
-      return normalizeStayType(u.stayType) === deptStayType;
+      return normalizeStayType(u.stayType) === deptStayType && u.department !== "Documents";
     });
   }, [allUsersExpenses, deptStayType]);
 
@@ -953,9 +1072,8 @@ function HomeTab({ expenses, allowance, allowanceType, allowanceUpdatedAt, user,
     const monthExpAll = allUsersForDeptChart.reduce(function(arr, u) {
       return arr.concat(u.expenses.filter(function(e) {
         const dateStr = e.timestamp || e.date;
-        if (!dateStr) return false;
-        const d = new Date(dateStr);
-        if (isNaN(d.getTime())) return false;
+        const d = parseFirestoreDateValue(dateStr);
+        if (!d) return false;
         return d.getMonth() === mk.idx && (deptPeriod === "yearly" ? d.getFullYear() === nowYear : true);
       }));
     }, []);
@@ -969,14 +1087,13 @@ function HomeTab({ expenses, allowance, allowanceType, allowanceUpdatedAt, user,
       return c !== "Food" && c !== "Transport" && c !== "School" && c !== "Boarding";
     }).reduce(function(s, e) { return s + (e.amount || 0); }, 0);
     const deptPct = {};
-    DEPARTMENTS.forEach(function(dept) {
+    deptChartDepartments.forEach(function(dept) {
       const deptUsers = allUsersForDeptChart.filter(function(u) { return u.department === dept; });
       const monthExpDept = deptUsers.reduce(function(arr, u) {
         return arr.concat(u.expenses.filter(function(e) {
           const dateStr = e.timestamp || e.date;
-          if (!dateStr) return false;
-          const d = new Date(dateStr);
-          if (isNaN(d.getTime())) return false;
+          const d = parseFirestoreDateValue(dateStr);
+          if (!d) return false;
           return d.getMonth() === mk.idx && (deptPeriod === "yearly" ? d.getFullYear() === nowYear : true);
         }));
       }, []);
@@ -1274,11 +1391,12 @@ function HomeTab({ expenses, allowance, allowanceType, allowanceUpdatedAt, user,
                   return (
                     <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: deptChartNarrow ? "8px 10px" : "10px 14px", boxShadow: "0 4px 16px rgba(0,0,0,0.1)", maxWidth: "min(92vw, 300px)", fontFamily: "'Sora',sans-serif" }}>
                       <div style={{ fontWeight: 800, marginBottom: 8, color: "#0f172a", fontSize: deptChartNarrow ? "0.75rem" : "0.82rem" }}>Month: {row.month}</div>
-                      {DEPARTMENTS.map(function(dept, di) {
+                      {deptChartDepartments.map(function(dept, di) {
                         var p = row.deptPct[dept] != null ? row.deptPct[dept] : 0;
                         var isMe = user && user.department === dept;
+                        var colorIndex = DEPARTMENTS.indexOf(dept);
                         return (
-                          <div key={dept} style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 2, fontWeight: isMe ? 800 : 600, color: DEPT_COLORS[di], fontSize: fs }}>
+                          <div key={dept} style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 2, fontWeight: isMe ? 800 : 600, color: DEPT_COLORS[colorIndex], fontSize: fs }}>
                             <span>{dept}{isMe ? " ★" : ""}</span>
                             <span>{p}%</span>
                           </div>
@@ -1312,12 +1430,13 @@ function HomeTab({ expenses, allowance, allowanceType, allowanceUpdatedAt, user,
         </div>
         <p style={{ fontSize: "0.7rem", fontWeight: 700, color: "#64748b", marginBottom: 6, textAlign: "center" }}>Departments (tooltip colors)</p>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", justifyContent: "center" }}>
-          {DEPARTMENTS.map(function(dept, di) {
+          {deptChartDepartments.map(function(dept, di) {
+            const colorIndex = DEPARTMENTS.indexOf(dept);
             const isMe = user && user.department === dept;
             return (
               <div key={dept} style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                <span style={{ width: 11, height: 11, borderRadius: "50%", background: DEPT_COLORS[di], display: "inline-block", flexShrink: 0, boxShadow: isMe ? "0 0 0 2px " + DEPT_COLORS[di] + "55" : "none" }}/>
-                <span style={{ fontSize: deptChartNarrow ? "0.7rem" : "0.78rem", fontWeight: isMe ? 800 : 500, color: isMe ? DEPT_COLORS[di] : "#334155", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                <span style={{ width: 11, height: 11, borderRadius: "50%", background: DEPT_COLORS[colorIndex], display: "inline-block", flexShrink: 0, boxShadow: isMe ? "0 0 0 2px " + DEPT_COLORS[colorIndex] + "55" : "none" }}/>
+                <span style={{ fontSize: deptChartNarrow ? "0.7rem" : "0.78rem", fontWeight: isMe ? 800 : 500, color: isMe ? DEPT_COLORS[colorIndex] : "#334155", textTransform: "uppercase", letterSpacing: "0.04em" }}>
                   {dept}{isMe ? " ★" : ""}
                 </span>
               </div>
@@ -1364,10 +1483,10 @@ function ExpensesTab({ expenses, stayType, onAddExpense, onUpdateExpense, onDele
     results.sort(function(a, b) {
       const aDate = expenseCalendarDateStr(a);
       const bDate = expenseCalendarDateStr(b);
-      const aTime = aDate ? localDateToTimestamp(aDate) : new Date(a.timestamp || 0).getTime();
-      const bTime = bDate ? localDateToTimestamp(bDate) : new Date(b.timestamp || 0).getTime();
+      const aTime = aDate ? localDateToTimestamp(aDate) : (parseFirestoreDateValue(a.timestamp || a.date) || new Date(0)).getTime();
+      const bTime = bDate ? localDateToTimestamp(bDate) : (parseFirestoreDateValue(b.timestamp || b.date) || new Date(0)).getTime();
       if (aTime !== bTime) return bTime - aTime;
-      return new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime();
+      return ((parseFirestoreDateValue(b.timestamp || b.date) || new Date(0)).getTime() - (parseFirestoreDateValue(a.timestamp || a.date) || new Date(0)).getTime());
     });
     return results;
   }, [expenses, period]);
@@ -1603,22 +1722,32 @@ function AllowanceTab({ allowance, setAllowance, allowanceType, setAllowanceType
   const effectiveWeekly = allowanceType === "daily" ? allowance * 7 : allowanceType === "weekly" ? allowance : Math.round(allowance / 4);
   const effectiveDaily = allowanceType === "daily" ? allowance : allowanceType === "weekly" ? Math.round(allowance / 7) : Math.round(allowance / 30);
   function amountFromHistory(bucket, key) {
-    var entry = bucket && bucket[key] ? bucket[key] : null;
-    return Number(entry && entry.amount ? entry.amount : 0);
+    var entry = bucket && bucket[key] && typeof bucket[key] === "object" ? bucket[key] : null;
+    return Number(entry && entry.amount != null ? entry.amount : 0);
+  }
+
+  function allowanceValueForPeriod(bucket, key, periodType) {
+    var value = amountFromHistory(bucket, key);
+    if (value > 0) return value;
+    if (!isAllowanceActiveForType(allowanceType, allowanceUpdatedAt)) return 0;
+    // If the user hasn't saved history for previous periods yet, don't show 0s.
+    // Use the current allowance as a fallback for the active allowanceType.
+    return periodType === allowanceType ? allowance : 0;
   }
 
   const firstSemMonths  = [7,8,9,10,11]; // Aug–Dec
   const secondSemMonths = [0,1,2,3,4];   // Jan–May
+  const weekLabels = ["This week", "Last week", "2 weeks ago"];
 
   const monthlyData = useMemo(function() {
     return months.map(function(m, mi) {
       var key = String(new Date().getFullYear()) + "-" + String(mi + 1).padStart(2, "0");
-      return { month: m, expenses: expenses.filter(function(e) { return new Date(e.timestamp || e.date || 0).getMonth() === mi; }).reduce(function(s, e) { return s + e.amount; }, 0), allowance: amountFromHistory(monthlyHistory, key) };
+      return { month: m, expenses: expenses.filter(function(e) { const d = parseFirestoreDateValue(e.timestamp || e.date); return d && d.getMonth() === mi; }).reduce(function(s, e) { return s + e.amount; }, 0), allowance: allowanceValueForPeriod(monthlyHistory, key, "monthly") };
     });
-  }, [expenses, monthlyHistory]);
+  }, [expenses, monthlyHistory, allowance, allowanceType, allowanceUpdatedAt]);
 
   const weeklyData = useMemo(function() {
-    return [0,1,2,3].map(function(i) {
+    return [0,1,2].map(function(i) {
       const ref = new Date();
       ref.setDate(ref.getDate() - i * 7);
       const weekStart = startOfWeek(ref);
@@ -1626,28 +1755,28 @@ function AllowanceTab({ allowance, setAllowance, allowanceType, setAllowanceType
       weekEnd.setDate(weekEnd.getDate() + 7);
       const key = localDateYYYYMMDD(weekStart);
       return {
-        week: "Week " + (i + 1),
-        expenses: expenses.filter(function(e) { const d = new Date(e.timestamp || e.date || 0); return d >= weekStart && d < weekEnd; }).reduce(function(s, e) { return s + e.amount; }, 0),
-        allowance: amountFromHistory(weeklyHistory, key)
+        week: weekLabels[i],
+        expenses: expenses.filter(function(e) { const d = parseFirestoreDateValue(e.timestamp || e.date); return d && d >= weekStart && d < weekEnd; }).reduce(function(s, e) { return s + e.amount; }, 0),
+        allowance: allowanceValueForPeriod(weeklyHistory, key, "weekly")
       };
     });
-  }, [expenses, weeklyHistory]);
+  }, [expenses, weeklyHistory, allowance, allowanceType, allowanceUpdatedAt]);
 
   const yearlyData = months.map(function(m, mi) {
     const key = String(new Date().getFullYear()) + "-" + String(mi + 1).padStart(2, "0");
-    return { month: m, expenses: expenses.filter(function(e) { const d = new Date(e.timestamp || e.date || 0); return d.getMonth() === mi && d.getFullYear() === new Date().getFullYear(); }).reduce(function(s, e) { return s + e.amount; }, 0), allowance: amountFromHistory(monthlyHistory, key) };
+    return { month: m, expenses: expenses.filter(function(e) { const d = parseFirestoreDateValue(e.timestamp || e.date); return d && d.getMonth() === mi && d.getFullYear() === new Date().getFullYear(); }).reduce(function(s, e) { return s + e.amount; }, 0), allowance: allowanceValueForPeriod(monthlyHistory, key, "monthly") };
   });
 
   const firstSemData  = ["Aug","Sep","Oct","Nov","Dec"].map(function(m, i) {
     const mi = firstSemMonths[i];
     const key = String(new Date().getFullYear()) + "-" + String(mi + 1).padStart(2, "0");
-    return { month: m, expenses: expenses.filter(function(e) { return new Date(e.timestamp || e.date || 0).getMonth() === mi; }).reduce(function(s, e) { return s + e.amount; }, 0), allowance: amountFromHistory(monthlyHistory, key) };
+    return { month: m, expenses: expenses.filter(function(e) { const d = parseFirestoreDateValue(e.timestamp || e.date); return d && d.getMonth() === mi; }).reduce(function(s, e) { return s + e.amount; }, 0), allowance: allowanceValueForPeriod(monthlyHistory, key, "monthly") };
   });
 
   const secondSemData = ["Jan","Feb","Mar","Apr","May"].map(function(m, i) {
     const mi = secondSemMonths[i];
     const key = String(new Date().getFullYear()) + "-" + String(mi + 1).padStart(2, "0");
-    return { month: m, expenses: expenses.filter(function(e) { return new Date(e.timestamp || e.date || 0).getMonth() === mi; }).reduce(function(s, e) { return s + e.amount; }, 0), allowance: amountFromHistory(monthlyHistory, key) };
+    return { month: m, expenses: expenses.filter(function(e) { const d = parseFirestoreDateValue(e.timestamp || e.date); return d && d.getMonth() === mi; }).reduce(function(s, e) { return s + e.amount; }, 0), allowance: allowanceValueForPeriod(monthlyHistory, key, "monthly") };
   });
 
   const dailyData = useMemo(function() {
@@ -1659,10 +1788,10 @@ function AllowanceTab({ allowance, setAllowance, allowanceType, setAllowanceType
       return {
         day: dayLabel,
         expenses: expenses.filter(function(e) { return expenseCalendarDateStr(e) === dayKey; }).reduce(function(s, e) { return s + e.amount; }, 0),
-        allowance: amountFromHistory(dailyHistory, dayKey)
+        allowance: allowanceValueForPeriod(dailyHistory, dayKey, "daily")
       };
     });
-  }, [expenses, dailyHistory]);
+  }, [expenses, dailyHistory, allowance, allowanceType, allowanceUpdatedAt]);
 
   const semesterFilteredData = semester === "firstsem" ? firstSemData : secondSemData;
   const chartData = period === "daily" ? dailyData : period === "weekly" ? weeklyData : period === "monthly" ? monthlyData : period === "yearly" ? yearlyData : semesterFilteredData;
@@ -1676,16 +1805,80 @@ function AllowanceTab({ allowance, setAllowance, allowanceType, setAllowanceType
   const pieData = [{ name: "Spent", value: totalSpent }, { name: "Remaining", value: Math.max(0, activeAllowance - totalSpent) }];
   const allowanceHistoryRows = useMemo(function() {
     var bucket = (allowanceHistory && allowanceHistory[allowanceType]) || {};
-    var rows = Object.keys(bucket).map(function(key) {
-      var entry = bucket[key] || {};
-      var raw = entry.updatedAt || "";
-      var iso = "";
-      if (typeof raw === "string") iso = raw;
-      else if (raw && typeof raw.toDate === "function") iso = raw.toDate().toISOString();
-      else if (raw && typeof raw === "object" && typeof raw.seconds === "number") iso = new Date(raw.seconds * 1000).toISOString();
-      return { key: key, amount: Number(entry.amount || 0), updatedAt: iso };
+    var now = new Date();
+
+    function updatedAtIsoFromEntry(entry) {
+      var raw = entry && entry.updatedAt ? entry.updatedAt : "";
+      if (typeof raw === "string") return raw;
+      if (raw && typeof raw.toDate === "function") return raw.toDate().toISOString();
+      if (raw && typeof raw === "object" && typeof raw.seconds === "number") return new Date(raw.seconds * 1000).toISOString();
+      return "";
+    }
+
+    function keyToSortMillis(key) {
+      if (allowanceType === "monthly") {
+        // key: YYYY-MM
+        var parts = String(key || "").split("-");
+        if (parts.length === 2) return new Date(Number(parts[0]), Number(parts[1]) - 1, 15, 12, 0, 0).getTime();
+      }
+      // daily/weekly key: YYYY-MM-DD
+      return localDateToTimestamp(String(key || ""));
+    }
+
+    // Build a stable "recent periods" list even if history is missing.
+    var keys = [];
+    if (allowanceType === "daily") {
+      for (var i = 0; i < 7; i++) {
+        var d = new Date(now);
+        d.setDate(d.getDate() - i);
+        keys.push(localDateYYYYMMDD(d));
+      }
+    } else if (allowanceType === "weekly") {
+      for (var w = 0; w < 3; w++) {
+        var ref = new Date(now);
+        ref.setDate(ref.getDate() - w * 7);
+        keys.push(localDateYYYYMMDD(startOfWeek(ref)));
+      }
+    } else {
+      for (var m = 0; m < 12; m++) {
+        var dm = new Date(now.getFullYear(), now.getMonth() - m, 15);
+        keys.push(String(dm.getFullYear()) + "-" + String(dm.getMonth() + 1).padStart(2, "0"));
+      }
+    }
+
+    function prettyLabelForKey(key, idx) {
+      if (allowanceType === "daily") {
+        var dt = parseFirestoreDateValue(key);
+        if (!dt) return key;
+        var dayName = dt.toLocaleDateString("en-US", { weekday: "short" });
+        return (idx === 0 ? "Today" : idx === 1 ? "Yesterday" : dayName) + " • " + dt.toLocaleDateString("en-PH", { month: "short", day: "numeric" });
+      }
+      if (allowanceType === "weekly") {
+        var start = parseFirestoreDateValue(key);
+        if (!start) return idx === 0 ? "This week" : idx === 1 ? "Last week" : (idx + " weeks ago");
+        var end = new Date(start);
+        end.setDate(end.getDate() + 6);
+        var range = start.toLocaleDateString("en-PH", { month: "short", day: "numeric" }) + "–" + end.toLocaleDateString("en-PH", { month: "short", day: "numeric" });
+        var head = idx === 0 ? "This week" : idx === 1 ? "Last week" : (idx + " weeks ago");
+        return head + " • " + range;
+      }
+      // monthly (YYYY-MM)
+      var parts = String(key || "").split("-");
+      if (parts.length === 2) {
+        var md = new Date(Number(parts[0]), Number(parts[1]) - 1, 1);
+        return md.toLocaleDateString("en-PH", { month: "long", year: "numeric" });
+      }
+      return String(key || "");
+    }
+
+    var rows = keys.map(function(key, idx) {
+      var entry = bucket[key] || null;
+      var amount = entry && entry.amount != null ? Number(entry.amount) : (isAllowanceActiveForType(allowanceType, allowanceUpdatedAt) ? Number(allowance || 0) : 0);
+      var updatedAt = entry ? updatedAtIsoFromEntry(entry) : (allowanceUpdatedAt || "");
+      return { key: key, label: prettyLabelForKey(key, idx), amount: amount, updatedAt: updatedAt, _sort: keyToSortMillis(key) };
     });
-    rows.sort(function(a, b) { return new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0); });
+
+    rows.sort(function(a, b) { return (b._sort || 0) - (a._sort || 0); });
     return rows;
   }, [allowanceHistory, allowanceType]);
 
@@ -1750,8 +1943,12 @@ function AllowanceTab({ allowance, setAllowance, allowanceType, setAllowanceType
                   return (
                     <div key={row.key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 9, padding: "7px 9px" }}>
                       <div>
-                        <p style={{ fontSize: "0.75rem", fontWeight: 700, color: "#334155" }}>{row.key}</p>
-                        <p style={{ fontSize: "0.68rem", color: "#94a3b8" }}>{row.updatedAt ? new Date(row.updatedAt).toLocaleString() : "No timestamp"}</p>
+                        <p style={{ fontSize: "0.75rem", fontWeight: 800, color: "#334155" }}>{row.label || row.key}</p>
+                        <p style={{ fontSize: "0.68rem", color: "#94a3b8" }}>
+                          {row.updatedAt ? new Date(row.updatedAt).toLocaleString() : "No timestamp"}
+                          {" · "}
+                          {row.key}
+                        </p>
                       </div>
                       <p style={{ fontSize: "0.82rem", fontWeight: 900, color: "#2563eb", fontFamily: "'JetBrains Mono',monospace" }}>₱{row.amount.toLocaleString()}</p>
                     </div>
@@ -2303,12 +2500,19 @@ export default function App() {
         setAuthLoading(false);
         setHasSeenWelcome(true);
         localStorage.setItem("hasSeenWelcome", "true");
-        // Load full profile from Firestore in background (non-blocking)
-        getDoc(doc(db, "users", firebaseUser.uid)).then(function(snap) {
+        // Load full profile from Firestore in background (non-blocking).
+        getDoc(doc(db, "users", firebaseUser.uid)).then(async function(snap) {
           if (snap.exists()) {
             setUser({ uid: firebaseUser.uid, ...snap.data() });
+            return;
           }
-        }).catch(function() {});
+          const fallbackProfile = await loadUserProfileFromDepartmentIndex(firebaseUser.uid);
+          if (fallbackProfile) {
+            setUser(fallbackProfile);
+          }
+        }).catch(function() {
+          // Ignore profile read failures; keep the auth-only user state.
+        });
       } else {
         setUser(null);
         setExpenses([]);
@@ -2332,8 +2536,8 @@ export default function App() {
   // This creates missing department documents under both users/ and allowances/.
   useEffect(function() {
     if (!user || !user.uid) return;
-    var deptsToEnsure = ["CCS","CE","CCJE","CN","CBAA","CLA","HSD"];
-    var deptNameMap = { HSD: "High School Department", CLA: "CLA" };
+    var deptsToEnsure = ["CCS","CE","CCJE","CN","CBAA","CLA","HSD","Documents"];
+    var deptNameMap = { HSD: "High School Department", CLA: "CLA", Documents: "Documents Department" };
     async function ensureDeptIndex() {
       // users/departments/departments (doc "departments") -> Departments (subcollection) -> {DEPT} (doc)
       await setDoc(doc(db, "users", "departments"), {}, { merge: true }).catch(function() {});
@@ -2352,80 +2556,154 @@ export default function App() {
   useEffect(function() {
     if (!user || !user.uid) return;
     let unsubAllow = function() {};
+    let unsubDeptAllow = function() {};
     let unsubExp = function() {};
+    let rootHasAllowRecord = false;
+
+    function setAllowanceDefaults() {
+      setAllowance(0);
+      setAllowanceType("monthly");
+      setAllowanceUpdatedAt("");
+      setAllowanceHistory({ daily: {}, weekly: {}, monthly: {} });
+    }
+
+    function applyAllowanceData(data, deptForHydrate) {
+      const type = data.allowanceType || "monthly";
+      const now = new Date();
+      const dailyKey = localDateYYYYMMDD(now);
+      const weeklyKey = localDateYYYYMMDD(startOfWeek(now));
+      const monthlyKey = String(now.getFullYear()) + "-" + String(now.getMonth() + 1).padStart(2, "0");
+      const periodKey = type === "daily" ? dailyKey : type === "weekly" ? weeklyKey : monthlyKey;
+
+      const history = data.history || {};
+      const historyForType = history[type] || {};
+      const periodEntry = historyForType[periodKey] || null;
+
+      const hasPeriodHistory = periodEntry && typeof periodEntry.amount === "number";
+      const hasAnyHistoryForType = Object.keys(historyForType).length > 0;
+      const currentAmount = hasPeriodHistory
+        ? periodEntry.amount
+        : (hasAnyHistoryForType ? 0 : (typeof data.amount === "number" ? data.amount : 0));
+
+      const rawUpdatedAt = periodEntry && periodEntry.updatedAt ? periodEntry.updatedAt : (data.updatedAt || "");
+      var normalizedUpdatedAt = rawUpdatedAt;
+      if (rawUpdatedAt && typeof rawUpdatedAt.toDate === "function") {
+        normalizedUpdatedAt = rawUpdatedAt.toDate().toISOString();
+      } else if (rawUpdatedAt && typeof rawUpdatedAt === "object" && typeof rawUpdatedAt.seconds === "number") {
+        normalizedUpdatedAt = new Date(rawUpdatedAt.seconds * 1000).toISOString();
+      }
+
+      setAllowance(currentAmount);
+      setAllowanceType(type);
+      setAllowanceUpdatedAt(normalizedUpdatedAt || "");
+      setAllowanceHistory({ daily: history.daily || {}, weekly: history.weekly || {}, monthly: history.monthly || {} });
+      setSemester(data.semester || "firstsem");
+      setStayType(normalizeStayType(data.stayType));
+      localStorage.setItem("selectedSemester", data.semester || "firstsem");
+      localStorage.setItem("selectedStayType", normalizeStayType(data.stayType));
+
+      if (deptForHydrate && (!user.department)) {
+        setUser(function(prev) { return prev && prev.uid === user.uid ? { ...prev, department: deptForHydrate } : prev; });
+      }
+    }
 
     // Load allowance
     unsubAllow = onSnapshot(
       doc(db, "allowances", user.uid),
       function(snap) {
-        if (snap.exists()) {
-          const data = snap.data();
-          const type = data.allowanceType || "monthly";
-          const now = new Date();
-          const dailyKey = localDateYYYYMMDD(now);
-          const weeklyKey = localDateYYYYMMDD(startOfWeek(now));
-          const monthlyKey = String(now.getFullYear()) + "-" + String(now.getMonth() + 1).padStart(2, "0");
-          const periodKey = type === "daily" ? dailyKey : type === "weekly" ? weeklyKey : monthlyKey;
-
-          const history = data.history || {};
-          const historyForType = history[type] || {};
-          const periodEntry = historyForType[periodKey] || null;
-
-          const hasPeriodHistory = periodEntry && typeof periodEntry.amount === "number";
-          const hasAnyHistoryForType = Object.keys(historyForType).length > 0;
-          const currentAmount = hasPeriodHistory
-            ? periodEntry.amount
-            : (hasAnyHistoryForType ? 0 : (typeof data.amount === "number" ? data.amount : 0));
-
-          const rawUpdatedAt = periodEntry && periodEntry.updatedAt ? periodEntry.updatedAt : (data.updatedAt || "");
-          var normalizedUpdatedAt = rawUpdatedAt;
-          if (rawUpdatedAt && typeof rawUpdatedAt.toDate === "function") {
-            normalizedUpdatedAt = rawUpdatedAt.toDate().toISOString();
-          } else if (rawUpdatedAt && typeof rawUpdatedAt === "object" && typeof rawUpdatedAt.seconds === "number") {
-            normalizedUpdatedAt = new Date(rawUpdatedAt.seconds * 1000).toISOString();
-          }
-
-          setAllowance(currentAmount);
-          setAllowanceType(type);
-          setAllowanceUpdatedAt(normalizedUpdatedAt || "");
-          setAllowanceHistory({ daily: history.daily || {}, weekly: history.weekly || {}, monthly: history.monthly || {} });
-          setSemester(data.semester || "firstsem");
-          setStayType(normalizeStayType(data.stayType));
-          localStorage.setItem("selectedSemester", data.semester || "firstsem");
-          localStorage.setItem("selectedStayType", normalizeStayType(data.stayType));
+        const rootData = snap.exists() ? snap.data() || {} : null;
+        const hasAllowRecord = rootData && (typeof rootData.amount === "number" || (rootData.history && Object.keys(rootData.history).length > 0) || rootData.allowanceType || rootData.stayType || rootData.semester);
+        rootHasAllowRecord = !!hasAllowRecord;
+        if (hasAllowRecord) {
+          applyAllowanceData(rootData);
         } else {
-          setAllowance(0);
-          setAllowanceType("monthly");
-          setAllowanceUpdatedAt("");
-          setAllowanceHistory({ daily: {}, weekly: {}, monthly: {} });
+          setAllowanceDefaults();
         }
       },
-      function(err) { console.warn("Allowance:", err.message); }
+      function(err) {
+        console.warn("Allowance:", err.message);
+        rootHasAllowRecord = false;
+        setAllowanceDefaults();
+      }
     );
+
+    // Also subscribe directly to the department allowance doc (source-of-truth mirror).
+    (async function() {
+      const dept = user.department || (await resolveDepartmentForUser(user.uid));
+      if (!dept) return;
+      unsubDeptAllow = onSnapshot(
+        doc(db, "allowances", "departments", "Departments", dept, "users", user.uid),
+        function(snap) {
+          if (rootHasAllowRecord) return; // Prefer the root doc when it exists.
+          if (snap && snap.exists()) {
+            applyAllowanceData(snap.data() || {}, dept);
+          }
+        },
+        function() {
+          // ignore dept mirror errors
+        }
+      );
+    })();
 
     // expenses/{uid}/records/{docId} — matches Firestore rules; sort in app (no composite index)
     unsubExp = onSnapshot(
       collection(db, "expenses", user.uid, "records"),
-      function(snap) {
+      async function(snap) {
         setExpenseSyncError(null);
+        if (!snap || snap.empty) {
+          const dept = user.department || (await resolveDepartmentForUser(user.uid));
+          if (!dept) {
+            setExpenses([]);
+            return;
+          }
+          await ensureExpenseDepartmentUserDoc(dept, user.uid, user);
+          const fallbackData = await fetchExpensesForUser(user.uid, dept);
+          fallbackData.sort(function(a, b) {
+            var ta = String(a.timestamp || a.date || "");
+            var tb = String(b.timestamp || b.date || "");
+            return tb.localeCompare(ta);
+          });
+          setExpenses(fallbackData);
+          if (!user.department) setUser(function(prev) { return prev && prev.uid === user.uid ? { ...prev, department: dept } : prev; });
+          return;
+        }
         const data = snap.docs.map(function(d) {
           return { id: d.id, ...d.data() };
         });
         data.sort(function(a, b) {
-          var ta = String(a.timestamp || a.date || "");
-          var tb = String(b.timestamp || b.date || "");
-          return tb.localeCompare(ta);
+          var aTime = parseFirestoreDateValue(a.timestamp || a.date);
+          var bTime = parseFirestoreDateValue(b.timestamp || b.date);
+          return (bTime ? bTime.getTime() : 0) - (aTime ? aTime.getTime() : 0);
         });
         setExpenses(data);
       },
       function(err) {
         console.warn("Expenses:", err.message);
         setExpenseSyncError(err.message || "Could not sync expenses.");
-        setExpenses([]);
+        (async function() {
+          try {
+            const dept = user.department || (await resolveDepartmentForUser(user.uid));
+            if (!dept) {
+              setExpenses([]);
+              return;
+            }
+            await ensureExpenseDepartmentUserDoc(dept, user.uid, user);
+            const fallbackData = await fetchExpensesForUser(user.uid, dept);
+            fallbackData.sort(function(a, b) {
+              var aTime = parseFirestoreDateValue(a.timestamp || a.date);
+              var bTime = parseFirestoreDateValue(b.timestamp || b.date);
+              return (bTime ? bTime.getTime() : 0) - (aTime ? aTime.getTime() : 0);
+            });
+            setExpenses(fallbackData);
+            if (!user.department) setUser(function(prev) { return prev && prev.uid === user.uid ? { ...prev, department: dept } : prev; });
+          } catch (e) {
+            setExpenses([]);
+          }
+        })();
       }
     );
 
-    return function() { unsubAllow(); unsubExp(); };
+    return function() { unsubAllow(); unsubDeptAllow(); unsubExp(); };
   }, [user]);
 
   // ── Load All Users Expenses for Dept Chart ────────────────────
@@ -2433,26 +2711,49 @@ export default function App() {
     if (!user) return;
     async function loadAllUsers() {
       try {
+        const userDocsMap = new Map();
+        const userDeptHintMap = new Map();
         const usersSnap = await getDocs(collection(db, "users"));
-        const userDocs = usersSnap.docs.filter(function(d) { return d.id !== "departments"; });
+        usersSnap.docs.filter(function(d) { return d.id !== "departments"; }).forEach(function(doc) {
+          userDocsMap.set(doc.id, doc);
+        });
+
+        const deptIndexSnap = await getDocs(collection(db, "users", "departments", "Departments"));
+        for (const deptDoc of deptIndexSnap.docs) {
+          const deptUsersSnap = await getDocs(collection(db, "users", "departments", "Departments", deptDoc.id, "users"));
+          for (const deptUserDoc of deptUsersSnap.docs) {
+            if (!userDocsMap.has(deptUserDoc.id)) {
+              userDocsMap.set(deptUserDoc.id, deptUserDoc);
+            }
+            if (!userDeptHintMap.has(deptUserDoc.id)) {
+              userDeptHintMap.set(deptUserDoc.id, deptDoc.id);
+            }
+          }
+        }
+
+        const userDocs = Array.from(userDocsMap.values());
         const allData = await Promise.all(userDocs.map(async function(userDoc) {
           const uid = userDoc.id;
           const userData = userDoc.data();
-          const dept = userData.department || "Other";
+          const dept = userData.department || userDeptHintMap.get(uid) || "Other";
           var stayType = "uwian";
           try {
             const allowSnap = await getDoc(doc(db, "allowances", uid));
             if (allowSnap.exists()) {
               stayType = normalizeStayType(allowSnap.data().stayType);
+            } else if (dept) {
+              const deptAllowSnap = await getDoc(doc(db, "allowances", "departments", "Departments", dept, "users", uid));
+              if (deptAllowSnap.exists()) {
+                stayType = normalizeStayType(deptAllowSnap.data().stayType);
+              }
             }
           } catch (e) { /* rules may block; default uwian */ }
           try {
-            const expSnap = await getDocs(collection(db, "expenses", uid, "records"));
-            const exps = expSnap.docs.map(function(d) { return d.data(); });
-            return { email: userData.email, department: userData.department || "Other", expenses: exps, stayType: stayType };
-          } catch (e) { 
-            console.error("Failed to load expenses for " + uid + ":", e.message);
-            return { email: userData.email, department: userData.department || "Other", expenses: [], stayType: stayType }; 
+            const exps = await fetchExpensesForUser(uid, dept);
+            return { email: userData.email, department: dept, expenses: exps, stayType: stayType };
+          } catch (e) {
+            console.error("Failed to load expenses for " + uid + ":", e && e.message ? e.message : e);
+            return { email: userData.email, department: dept, expenses: [], stayType: stayType };
           }
         }));
         setAllUsersExpenses(allData);
@@ -2574,6 +2875,7 @@ export default function App() {
       // expenses/departments/Departments/{DEPT}/users/{uid}/{category}/{expenseId}
       const mirrorDept = dept;
       const mirrorCategory = expenseDoc.category;
+      await ensureExpenseDepartmentUserDoc(mirrorDept, user.uid, user);
       await setDoc(
         doc(db, "expenses", "departments", "Departments", mirrorDept, "users", user.uid, mirrorCategory, added.id),
         { ...expenseDoc, id: added.id },
@@ -2637,6 +2939,7 @@ export default function App() {
         ).catch(function(e) { console.warn("Mirror expense delete failed:", e && e.message ? e.message : e); });
       }
 
+      await ensureExpenseDepartmentUserDoc(dept, user.uid, user);
       await setDoc(
         doc(db, "expenses", "departments", "Departments", dept, "users", user.uid, expenseUpdate.category, id),
         { ...expenseUpdate, id: id },
